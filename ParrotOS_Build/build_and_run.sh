@@ -31,7 +31,7 @@ mkfs.vfat "$IMG_FILE"
 mmd -i "$IMG_FILE" ::/EFI
 mmd -i "$IMG_FILE" ::/EFI/BOOT
 mcopy -i "$IMG_FILE" "$EFI_SOURCE" ::/EFI/BOOT/BOOTX64.EFI
-
+mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/ico_100x100.bmp" ::/ico_100x100.bmp
 echo "--- Генерация ISO образа ---"
 ISO_FILE="$OUTPUT_DIR/boot.iso"
 mkisofs -U -A "MyUEFI" -V "UEFI_BOOT" -J -joliet-long -r -v \
