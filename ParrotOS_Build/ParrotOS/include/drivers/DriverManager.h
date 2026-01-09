@@ -1,10 +1,21 @@
 #pragma once
 #include <Uefi.h>
+#include <Protocol/GraphicsOutput.h>
+typedef struct {
+    UINT32 width;
+    UINT32 height;
+    UINT32 bpp;
+    UINT32 pitch;
+    volatile UINT8* fb;
+    EFI_GRAPHICS_PIXEL_FORMAT pixel_format;
+} VideoMode;
 typedef struct {
     EFI_STATUS Status;
     CHAR16     *Message;
     UINTN      FileSize;
 } EC16;
+
+
 typedef enum {
     DRIVER_TYPE_NONE = 0,
     DRIVER_TYPE_KEYBOARD = 1,
@@ -36,6 +47,7 @@ typedef struct {
     VOID       (*PutPixel)(INT32 x, INT32 y, UINT32 rgb24);
     VOID       (*DrawLine)(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24);
     VOID       (*DrawBitmap32)(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0);
+    VideoMode* (*GetVideoMode)(VOID);
 } VIDEO_DRIVER_IF;
 typedef struct {
     DRIVER_TYPE Type;
@@ -69,3 +81,4 @@ VOID CLEAR_SCREEN(UINT32 rgb24);
 VOID PUT_PIXEL(INT32 x, INT32 y, UINT32 rgb24);
 VOID DRAW_LINE(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24);
 VOID DRAW_BITMAP32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0);
+VideoMode* GET_CURRENT_VMODE(VOID);

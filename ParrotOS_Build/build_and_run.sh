@@ -26,7 +26,7 @@ cp "$EFI_SOURCE" "$USB_ROOT/EFI/BOOT/BOOTX64.EFI"
 
 echo "--- Генерация образа диска (boot.img) ---"
 IMG_FILE="$OUTPUT_DIR/boot.img"
-dd if=/dev/zero of="$IMG_FILE" bs=1M count=64
+dd if=/dev/zero of="$IMG_FILE" bs=1M count=1
 mkfs.vfat "$IMG_FILE"
 mmd -i "$IMG_FILE" ::/EFI
 mmd -i "$IMG_FILE" ::/EFI/BOOT

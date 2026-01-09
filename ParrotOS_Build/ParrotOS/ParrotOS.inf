@@ -20,6 +20,9 @@
 [LibraryClasses]
   UefiApplicationEntryPoint
   UefiLib
+  BaseLib              # <--- Должно быть здесь для работы со строками
+  MemoryAllocationLib  # <--- Для AllocatePool
+  PrintLib
 
 [UserExtensions.TianoCore."ExtraFiles"]
   ParrotOSExtra.uni

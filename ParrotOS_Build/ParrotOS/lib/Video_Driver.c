@@ -1,5 +1,4 @@
 #include "../include/drivers/Video_Driver.h"
-#include "../include/drivers/DriverManager.h"
 #include <Library/UefiLib.h>
 #include <Library/BaseMemoryLib.h>
 #include <Library/UefiBootServicesTableLib.h>
@@ -163,7 +162,10 @@ void draw_bitmap32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 
         }
     }
 }
-
+VideoMode* get_current_vmode()
+{
+    return &vmode;
+}
 void init_vd()
 {
     static VIDEO_DRIVER_IF vd_if = {
@@ -171,7 +173,8 @@ void init_vd()
         .ClearScreen = clear_screen,
         .PutPixel = put_pixel,
         .DrawLine = draw_line,
-        .DrawBitmap32 = draw_bitmap32
+        .DrawBitmap32 = draw_bitmap32,
+        .GetVideoMode = get_current_vmode
     };
 
     DRIVER vd_driver = {

@@ -226,3 +226,12 @@ VOID DRAW_BITMAP32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 
     VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
     video->DrawBitmap32(bmp, bmp_w, bmp_h, x0, y0);
 }
+VideoMode* GET_CURRENT_VMODE(VOID)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (!drv || !drv->Interface)
+        return NULL;
+
+    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
+    return video->GetVideoMode();
+}
