@@ -28,12 +28,10 @@ echo "--- Генерация образа диска (boot.img) ---"
 IMG_FILE="$OUTPUT_DIR/boot.img"
 dd if=/dev/zero of="$IMG_FILE" bs=1M count=64
 mkfs.vfat "$IMG_FILE"
-# Используем mcopy из mtools, чтобы не возиться с sudo mount
 mmd -i "$IMG_FILE" ::/EFI
 mmd -i "$IMG_FILE" ::/EFI/BOOT
 mcopy -i "$IMG_FILE" "$EFI_SOURCE" ::/EFI/BOOT/BOOTX64.EFI
 
-# 4. Создание ISO образа
 echo "--- Генерация ISO образа ---"
 ISO_FILE="$OUTPUT_DIR/boot.iso"
 mkisofs -U -A "MyUEFI" -V "UEFI_BOOT" -J -joliet-long -r -v \
@@ -45,13 +43,11 @@ qemu-system-x86_64 -hda "$IMG_FILE" -m 256M -bios /usr/share/ovmf/OVMF.fd -net n
 echo "------------------------------------------------"
 read -p "Хотите записать проект на флешку? (y/n): " flash_yn
 if [[ $flash_yn == [Yy]* ]]; then
-    lsblk # Показываем список дисков
+    lsblk 
     echo "ВНИМАНИЕ: Все данные на выбранном диске будут УДАЛЕНЫ!"
     read -p "Введите имя устройства (например, sdb или sdc): " dev_name
     
     if [ -b "/dev/$dev_name" ]; then
-        # Копируем структуру на флешку (нужна примонтированная флешка)
-        # Или просто записываем IMG образ через dd
         read -p "Записать как образ (IMG) или просто скопировать файлы (файлы)? (img/file): " mode
         if [ "$mode" == "img" ]; then
             sudo dd if="$IMG_FILE" of="/dev/$dev_name" bs=4M status=progress
@@ -68,8 +64,6 @@ if [[ $flash_yn == [Yy]* ]]; then
         echo "Устройство /dev/$dev_name не найдено."
     fi
 fi
-
-# 6. Система Git и Build Number
 echo "--- Работа с Git ---"
 read -p "Скомпилировать и сохранить в Git? (y/n): " git_yn
 if [[ $git_yn == [Yy]* ]]; then

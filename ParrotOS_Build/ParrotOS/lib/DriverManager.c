@@ -180,3 +180,49 @@ VOID RegisterrsDisk()
     STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
     storage->RegisterrsDisk();
 }
+
+EFI_STATUS INIT_VIDEO_DRIVER(EFI_SYSTEM_TABLE *SystemTable)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
+    return video->Init(SystemTable);
+}
+VOID CLEAR_SCREEN(UINT32 rgb24)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (!drv || !drv->Interface)
+        return;
+
+    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
+    video->ClearScreen(rgb24);
+}
+VOID PUT_PIXEL(INT32 x, INT32 y, UINT32 rgb24)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (!drv || !drv->Interface)
+        return;
+
+    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
+    video->PutPixel(x, y, rgb24);
+}
+VOID DRAW_LINE(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (!drv || !drv->Interface)
+        return;
+
+    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
+    video->DrawLine(x0, y0, x1, y1, rgb24);
+}
+VOID DRAW_BITMAP32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (!drv || !drv->Interface)
+        return;
+
+    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
+    video->DrawBitmap32(bmp, bmp_w, bmp_h, x0, y0);
+}

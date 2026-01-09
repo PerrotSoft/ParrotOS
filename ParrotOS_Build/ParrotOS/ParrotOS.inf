@@ -11,6 +11,7 @@
   lib/DriverManager.c
   lib/KeyBord.c
   lib/fat32.c
+  lib/Video_Driver.c
 
 [Packages]
   MdePkg/MdePkg.dec

@@ -31,6 +31,13 @@ typedef struct {
     void       (*RegisterrsDisk)();
 } STORAGE_DRIVER_IF;
 typedef struct {
+    EFI_STATUS (*Init)(EFI_SYSTEM_TABLE *SystemTable);
+    VOID       (*ClearScreen)(UINT32 rgb24);
+    VOID       (*PutPixel)(INT32 x, INT32 y, UINT32 rgb24);
+    VOID       (*DrawLine)(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24);
+    VOID       (*DrawBitmap32)(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0);
+} VIDEO_DRIVER_IF;
+typedef struct {
     DRIVER_TYPE Type;
     UINT8       Priority;
     VOID*       Interface;
@@ -56,3 +63,9 @@ EC16 ReadFile(CHAR16 *filename);
 EFI_STATUS WriteFile(CHAR16 *filename, UINT16 *data, UINTN len);
 EFI_STATUS GetFileSize(CHAR16 *filename, UINT64 *filesize);
 VOID RegisterrsDisk();
+
+EFI_STATUS INIT_VIDEO_DRIVER(EFI_SYSTEM_TABLE *SystemTable);
+VOID CLEAR_SCREEN(UINT32 rgb24);
+VOID PUT_PIXEL(INT32 x, INT32 y, UINT32 rgb24);
+VOID DRAW_LINE(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24);
+VOID DRAW_BITMAP32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0);
