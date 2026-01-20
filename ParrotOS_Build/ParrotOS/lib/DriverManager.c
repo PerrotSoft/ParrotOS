@@ -50,21 +50,6 @@ BOOLEAN HasKey(VOID) {
     }
     return FALSE;
 }
-CHAR16 GetKeyRun(VOID) {
-    DRIVER* d = GetBestDriver(DRIVER_TYPE_KEYBOARD);
-    if (d && d->Interface && SystemTables) {
-        return ((KEY_DRIVER_IF*)d->Interface)->GetKeyRun(SystemTables);
-    }
-    return 0;
-}
-
-BOOLEAN HasKeyRun(VOID) {
-    DRIVER* d = GetBestDriver(DRIVER_TYPE_KEYBOARD);
-    if (d && d->Interface && SystemTables) {
-        return ((KEY_DRIVER_IF*)d->Interface)->HasKeyRun(SystemTables);
-    }
-    return FALSE;
-}
 VOID Reset(VOID)
 {
     DRIVER* drv = GetBestDriver(DRIVER_TYPE_KEYBOARD);

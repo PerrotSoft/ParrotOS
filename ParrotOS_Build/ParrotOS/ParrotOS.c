@@ -50,8 +50,6 @@ VOID EFIAPI Int22h_Keyboard (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT C
         case 0x01: ctx->REG_AX = (UINT64)GetKey(); break;
         case 0x02: ctx->REG_AX = (UINT64)HasKey(); break;
         case 0x03: Reset(); break;
-        case 0x04: ctx->REG_AX = (UINT64)GetKeyRun(); break;
-        case 0x05: ctx->REG_AX = (UINT64)HasKeyRun(); break;
     }
 }
 VOID EFIAPI Int23h_Storage (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
@@ -109,7 +107,6 @@ VOID EFIAPI Int26h_KernelService (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONT
     switch (*reg_ax) {
         case 0x01: 
             if (*reg_bx <= 0xFF) {
-                // ИСПРАВЛЕНО: Правильное приведение типов для регистрации обработчика
                 RegisterCustomHandler((UINT8)*reg_bx, (MY_HANDLER_FUNC)(UINTN)*reg_cx);
             }
             break;
@@ -257,7 +254,6 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
     INT32 tl_x = (INT32)(vmode.width / 2 - 50);
     INT32 tl_y = (INT32)(vmode.height / 2 + 74);
     font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
-    
     kernal_loop = true;
     task_create(0,kernal);
     

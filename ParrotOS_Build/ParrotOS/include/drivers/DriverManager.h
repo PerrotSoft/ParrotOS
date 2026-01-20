@@ -27,8 +27,6 @@ typedef enum {
 typedef struct {
     CHAR16  (*GetKey)(EFI_SYSTEM_TABLE *SytemTables);
     BOOLEAN (*HasKey)(EFI_SYSTEM_TABLE *SytemTables);
-    CHAR16  (*GetKeyRun)(EFI_SYSTEM_TABLE *SytemTables);
-    BOOLEAN (*HasKeyRun)(EFI_SYSTEM_TABLE *SytemTables);
     VOID    (*Reset)(EFI_SYSTEM_TABLE *SytemTables);
 } KEY_DRIVER_IF;
 
@@ -77,8 +75,6 @@ VOID INIT(EFI_SYSTEM_TABLE *SytemTables);
 
 CHAR16 GetKey(VOID);
 BOOLEAN HasKey(VOID);
-CHAR16 GetKeyRun(VOID);
-BOOLEAN HasKeyRun(VOID);
 VOID Reset(VOID);
 
 EFI_STATUS ReadFileByPath(CHAR16 *path_in, EC16 *out);
