@@ -32,13 +32,16 @@ mmd -i "$IMG_FILE" ::/EFI
 mmd -i "$IMG_FILE" ::/EFI/BOOT
 mcopy -i "$IMG_FILE" "$EFI_SOURCE" ::/EFI/BOOT/BOOTX64.EFI
 mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/ico_100x100.bmp" ::/ico_100x100.bmp
+mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/p.pex" ::/p.pex
+mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/system.ttf" ::/system.ttf
 echo "--- Генерация ISO образа ---"
 ISO_FILE="$OUTPUT_DIR/boot.iso"
 mkisofs -U -A "MyUEFI" -V "UEFI_BOOT" -J -joliet-long -r -v \
     -eltorito-alt-boot -e EFI/BOOT/BOOTX64.EFI -no-emul-boot \
     -o "$ISO_FILE" "$USB_ROOT"
 
-qemu-system-x86_64 -hda "$IMG_FILE" -m 256M -bios /usr/share/ovmf/OVMF.fd -net none
+qemu-system-x86_64 -hda "$IMG_FILE" -m 256M -bios /usr/share/ovmf/OVMF.fd -net none -netdev user,id=net0 \
+  -device e1000,netdev=net0
 
 echo "------------------------------------------------"
 read -p "Хотите записать проект на флешку? (y/n): " flash_yn

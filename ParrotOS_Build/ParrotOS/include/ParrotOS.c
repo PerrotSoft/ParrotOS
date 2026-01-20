@@ -12,7 +12,6 @@
 #include "include/pex.h"
 #include "include/font.h"
 #include <stdbool.h>
-#include <Library/PrintLib.h>
 
 extern VideoMode vmode;
 CHAR16* ExceptionNames[] = {
@@ -93,34 +92,6 @@ VOID EFIAPI Int25h_MultiTasking (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTE
         case 0x06: ctx->REG_AX = (UINT64)LoadAndStartPex((CHAR16*)ctx->REG_CX); break;
     }
 }
-VOID EFIAPI Int26h_KernelService (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    #if defined(MDE_CPU_X64)
-        EFI_SYSTEM_CONTEXT_X64* ctx = Context.SystemContextX64;
-        UINTN* reg_ax = &ctx->Rax;
-        UINTN* reg_bx = &ctx->Rbx;
-        UINTN* reg_cx = &ctx->Rcx;
-    #else
-        EFI_SYSTEM_CONTEXT_IA32* ctx = Context.SystemContextIa32;
-        UINTN* reg_ax = (UINTN*)&ctx->Eax;
-        UINTN* reg_bx = (UINTN*)&ctx->Ebx;
-        UINTN* reg_cx = (UINTN*)&ctx->Ecx;
-    #endif
-
-    switch (*reg_ax) {
-        case 0x01: 
-            if (*reg_bx <= 0xFF) {
-                // ИСПРАВЛЕНО: Правильное приведение типов для регистрации обработчика
-                RegisterCustomHandler((UINT8)*reg_bx, (MY_HANDLER_FUNC)(UINTN)*reg_cx);
-            }
-            break;
-        case 0x02: 
-            gRT->ResetSystem(EfiResetWarm, EFI_SUCCESS, 0, NULL);
-            break;
-        case 0x03: 
-            gRT->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL);
-            break;
-    }
-}
 VOID KernelPanic(const CHAR16* message, EFI_SYSTEM_CONTEXT Context, UINT64 ErrorCode) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     gBS->SetWatchdogTimer(60, 0x00, 0, NULL);
@@ -177,38 +148,27 @@ EFI_STATUS draw_logo_from_disk(CHAR16 DiskLetter) {
     CLEAR_SCREEN(0x000000);
     return draw_bmp_from_memory_safe((UINT8*)file.Message, file.FileSize, bmp_x, bmp_y);
 }
-CHAR16* StartFile;
+
 void kernal() {
     Fat32_RegisterrsDisk(); 
-    INT32 tl_x = (INT32)(vmode.width / 2 - 50);
-    INT32 tl_y = (INT32)(vmode.height / 2 + 200);
     EC16 file;
-    
-    EFI_STATUS Status = ReadFileByPath(StartFile, &file);
-
-    if (EFI_ERROR(Status) || file.Message == NULL||!file.Message) {
-        CHAR16 Buffer[100]; 
-        UnicodeSPrint(Buffer, sizeof(Buffer), L"[ERROR] pex not found! Status: %r", Status);
-        font_draw_string(L"SysFont", tl_x, tl_y, 14, 0xFF0000, Buffer);
-        task_exit();
+    EFI_STATUS Status = ReadFileByPath(L"p.pex", &file);
+    if (EFI_ERROR(Status)) {
+        Print(L"[ERROR] p.pex not found! Status: %r\n", Status);
+        while(1);
     } else {
-        if (file.Message != NULL) {
-            FreePool(file.Message);
-        }
-        Status = LoadAndStartPex(StartFile);
-        
+        Print(L"[KERNEL] p.pex found. Loading...\n");
+        Status = LoadAndStartPex(L"p.pex");
         if (EFI_ERROR(Status)) {
-            CHAR16 Buffer[100];
-            UnicodeSPrint(Buffer, sizeof(Buffer), L"[ERROR] Load failed! Status: %r", Status);
-            font_draw_string(L"SysFont", tl_x, tl_y, 14, 0xFF0000, Buffer);
+            Print(L"[ERROR] Load failed! Status: %r\n", Status);
+        } else {
+            Print(L"[KERNEL] Load success. Entering loop.\n");
         }
     }
     while (kernal_loop) {
         Fat32_RegisterrsDisk();
         UINT8 f = 0;
-        for (int i = 0; i < MAX_TASKS; i++) {
-            if (tasks[i].active) f++;
-        }
+        for (int i = 0; i < MAX_TASKS; i++) if (tasks[i].active) f++;
         if(f < 2) task_exit();
         task_yield();
     }
@@ -222,40 +182,24 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
     INIT(SystemTable);
     init_vd();
     INIT_VIDEO_DRIVER(SystemTable);
-    Keyboard_INIT();
     Fat32_Storage_INIT();
     Fat32_RegisterrsDisk(); 
     draw_logo_from_disk('A');
-    RegisterCustomHandler(0x00, CommonExceptionHandler); // Division by Zero
-    RegisterCustomHandler(0x01, CommonExceptionHandler); // Debug
-    RegisterCustomHandler(0x02, CommonExceptionHandler); // NMI
-    RegisterCustomHandler(0x03, CommonExceptionHandler); // Breakpoint
-    RegisterCustomHandler(0x04, CommonExceptionHandler); // Overflow
-    RegisterCustomHandler(0x05, CommonExceptionHandler); // Bound Range Exceeded
-    RegisterCustomHandler(0x06, CommonExceptionHandler); // Invalid Opcode
-    RegisterCustomHandler(0x07, CommonExceptionHandler); // Device Not Available
-    RegisterCustomHandler(0x08, CommonExceptionHandler); // Double Fault
-    RegisterCustomHandler(0x09, CommonExceptionHandler); // Coprocessor Segment Overrun
-    RegisterCustomHandler(0x0A, CommonExceptionHandler); // Invalid TSS
-    RegisterCustomHandler(0x0B, CommonExceptionHandler); // Segment Not Present
-    RegisterCustomHandler(0x0C, CommonExceptionHandler); // Stack-Segment Fault
-    RegisterCustomHandler(0x0D, CommonExceptionHandler); // General Protection Fault
-    RegisterCustomHandler(0x0E, CommonExceptionHandler); // Page Fault);
-    
+    RegisterCustomHandler(0x00, CommonExceptionHandler);
+    RegisterCustomHandler(0x0E, CommonExceptionHandler);
     RegisterCustomHandler(0x21, Int21h_ConsoleIO);
     RegisterCustomHandler(0x22, Int22h_Keyboard);
     RegisterCustomHandler(0x23, Int23h_Storage);
     RegisterCustomHandler(0x24, Int24h_Graphics);
     RegisterCustomHandler(0x25, Int25h_MultiTasking);
-    RegisterCustomHandler(0x26, Int26h_KernelService);
     init_scheduler();
     font_init();
     kernal_loop = true;
-    StartFile=L"start.pex";
     font_load_from_disk(L"system.ttf", L"SysFont");
 
     INT32 tl_x = (INT32)(vmode.width / 2 - 50);
     INT32 tl_y = (INT32)(vmode.height / 2 + 74);
+
     font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
     
     kernal_loop = true;

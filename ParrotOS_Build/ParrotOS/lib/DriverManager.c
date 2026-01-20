@@ -35,27 +35,36 @@ VOID INIT(EFI_SYSTEM_TABLE *SytemTables)
 {
     SystemTables = SytemTables;
 }
-
-CHAR16 GetKey(VOID)
-{
-    DRIVER* drv = GetBestDriver(DRIVER_TYPE_KEYBOARD);
-    if (!drv || !drv->Interface)
-        return 0;
-
-    KEY_DRIVER_IF* key = (KEY_DRIVER_IF*)drv->Interface;
-    return key->GetKey(SystemTables);
+CHAR16 GetKey(VOID) {
+    DRIVER* d = GetBestDriver(DRIVER_TYPE_KEYBOARD);
+    if (d && d->Interface && SystemTables) {
+        return ((KEY_DRIVER_IF*)d->Interface)->GetKey(SystemTables);
+    }
+    return 0;
 }
 
-BOOLEAN HasKey(VOID)
-{
-    DRIVER* drv = GetBestDriver(DRIVER_TYPE_KEYBOARD);
-    if (!drv || !drv->Interface)
-        return FALSE;
-
-    KEY_DRIVER_IF* key = (KEY_DRIVER_IF*)drv->Interface;
-    return key->HasKey(SystemTables);
+BOOLEAN HasKey(VOID) {
+    DRIVER* d = GetBestDriver(DRIVER_TYPE_KEYBOARD);
+    if (d && d->Interface && SystemTables) {
+        return ((KEY_DRIVER_IF*)d->Interface)->HasKey(SystemTables);
+    }
+    return FALSE;
+}
+CHAR16 GetKeyRun(VOID) {
+    DRIVER* d = GetBestDriver(DRIVER_TYPE_KEYBOARD);
+    if (d && d->Interface && SystemTables) {
+        return ((KEY_DRIVER_IF*)d->Interface)->GetKeyRun(SystemTables);
+    }
+    return 0;
 }
 
+BOOLEAN HasKeyRun(VOID) {
+    DRIVER* d = GetBestDriver(DRIVER_TYPE_KEYBOARD);
+    if (d && d->Interface && SystemTables) {
+        return ((KEY_DRIVER_IF*)d->Interface)->HasKeyRun(SystemTables);
+    }
+    return FALSE;
+}
 VOID Reset(VOID)
 {
     DRIVER* drv = GetBestDriver(DRIVER_TYPE_KEYBOARD);
@@ -234,4 +243,63 @@ VideoMode* GET_CURRENT_VMODE(VOID)
 
     VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
     return video->GetVideoMode();
+}
+
+EFI_STATUS INIT_NETWORK_DRIVER(EFI_SYSTEM_TABLE *SystemTable, CHAR16 *NicName, CHAR16 *Password)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_NETWORK);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    NETWORK_DRIVER_IF* net = (NETWORK_DRIVER_IF*)drv->Interface;
+    return net->Init(SystemTable, NicName, Password);
+}
+
+EFI_STATUS NETWORK_TCP_CONNECT(CHAR16 *Ip, UINT16 Port)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_NETWORK);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    NETWORK_DRIVER_IF* net = (NETWORK_DRIVER_IF*)drv->Interface;
+    return net->TcpConnect(Ip, Port);
+}
+
+EFI_STATUS NETWORK_TCP_SEND(UINT8 *Data, UINTN Len)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_NETWORK);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    NETWORK_DRIVER_IF* net = (NETWORK_DRIVER_IF*)drv->Interface;
+    return net->TcpSend(Data, Len);
+}
+
+EFI_STATUS NETWORK_TCP_RECEIVE(UINT8 *Buffer, UINTN *Len)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_NETWORK);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    NETWORK_DRIVER_IF* net = (NETWORK_DRIVER_IF*)drv->Interface;
+    return net->TcpReceive(Buffer, Len);
+}
+
+EFI_STATUS NETWORK_TCP_DISCONNECT(VOID)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_NETWORK);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    NETWORK_DRIVER_IF* net = (NETWORK_DRIVER_IF*)drv->Interface;
+    return net->TcpDisconnect();
+}
+EFI_STATUS NETWORK_DNS_LOOKUP(CHAR16 *DomainName, CHAR16 *OutIpStr)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_NETWORK);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    NETWORK_DRIVER_IF* net = (NETWORK_DRIVER_IF*)drv->Interface;
+    return net->DnsLookup(DomainName, OutIpStr);
 }

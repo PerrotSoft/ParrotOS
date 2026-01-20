@@ -1,17 +1,14 @@
 #pragma once
 #include <Uefi.h>
 #include <Library/UefiLib.h>
-#include <Library/MemoryAllocationLib.h> // ДОБАВИТЬ для AllocatePool/FreePool
-#include <stdint.h>
+#include <Library/MemoryAllocationLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include <string.h>
-#include "drivers/Video_Driver.h"   // ИЗМЕНИТЬ: подключаем напрямую заголовок видеодрайвера
-
-// ... далее код без изменений ...
+#include "drivers/Video_Driver.h"
 
 #pragma pack(push,1)
 typedef struct {
-    UINT16 bfType;      // 'BM'
+    UINT16 bfType;
     UINT32 bfSize;
     UINT16 bfReserved1;
     UINT16 bfReserved2;
@@ -43,7 +40,7 @@ static inline EFI_STATUS bmp_fail(const CHAR16 *msg, EFI_STATUS code) {
 
 static EFI_STATUS check_bmp_compatibility(const BMP_FILEHEADER *fh, const BMP_INFOHEADER *ih, UINTN size) {
     if (!fh || !ih) return BMP_ERROR_INCOMPATIBLE;
-    if (fh->bfType != 0x4D42) return BMP_ERROR_INCOMPATIBLE; // not BM
+    if (fh->bfType != 0x4D42) return BMP_ERROR_INCOMPATIBLE;
     if (ih->biPlanes != 1) return BMP_ERROR_INCOMPATIBLE;
     if (ih->biBitCount != 24 && ih->biBitCount != 32) return BMP_ERROR_INCOMPATIBLE;
     if (ih->biCompression != BI_RGB) return BMP_ERROR_INCOMPATIBLE;
@@ -75,10 +72,9 @@ EFI_STATUS draw_bmp_from_memory_safe(const UINT8 *data, UINTN size, INT32 x0, IN
     UINT32 abs_h = (UINT32)(top_down ? -bmp_h : bmp_h);
 
     UINT32 bpp_bytes = ih.biBitCount / 8;
-    UINT64 row_stride = ((UINT64)abs_w * bpp_bytes + 3) & ~3ULL; // aligned 4 bytes
+    UINT64 row_stride = ((UINT64)abs_w * bpp_bytes + 3) & ~3ULL;
     const UINT8 *pixels = data + fh.bfOffBits;
 
-    // Корректируем видимую область экрана
     VideoMode* current_vmode = GET_CURRENT_VMODE();
     INT32 screen_w = (INT32)current_vmode->width;
     INT32 screen_h = (INT32)current_vmode->height;
@@ -96,7 +92,6 @@ EFI_STATUS draw_bmp_from_memory_safe(const UINT8 *data, UINTN size, INT32 x0, IN
 
     if (draw_w <= 0 || draw_h <= 0) return EFI_SUCCESS;
 
-    // Буфер RGB32
     UINT32 *buf = AllocatePool(draw_w * draw_h * sizeof(UINT32));
     if (!buf) return bmp_fail(L"Cannot allocate buffer", EFI_OUT_OF_RESOURCES);
 
@@ -105,7 +100,7 @@ EFI_STATUS draw_bmp_from_memory_safe(const UINT8 *data, UINTN size, INT32 x0, IN
         const UINT8 *row_ptr = pixels + src_row * row_stride + src_x0 * bpp_bytes;
         for (INT32 xx = 0; xx < draw_w; xx++) {
             const UINT8 *p = row_ptr + xx * bpp_bytes;
-            UINT32 r = p[2], g = p[1], b = p[0]; // 24/32-bit
+            UINT32 r = p[2], g = p[1], b = p[0];
             buf[yy * draw_w + xx] = (r << 16) | (g << 8) | b;
         }
     }

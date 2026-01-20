@@ -9,16 +9,13 @@
 #include <Protocol/LoadedImage.h>
 #include <Guid/FileInfo.h>
 
-// ===== Текущий диск, путь и массив дисков =====
 EFI_FILE_PROTOCOL *FAT32_CWD = NULL;
 CHAR16 FAT32_CurrentPath[MAX_PATH_LEN] = L"\\";
 CHAR16 FAT32_CurrentDisk = L'A';
-
 EFI_FILE_PROTOCOL *FAT32_Disks[MAX_DISKS];
 CHAR16 FAT32_DiskLetters[MAX_DISKS];
 UINTN FAT32_DiskCount = 0;
 
-// ===== Вспомогательные функции =====
 UINTN FAT32_SplitLine(CHAR16 *line, CHAR16 *args[], UINTN max_args) {
     UINTN argc = 0;
     CHAR16 *ptr = line;

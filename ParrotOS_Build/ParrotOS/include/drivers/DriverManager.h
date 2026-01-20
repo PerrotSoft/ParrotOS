@@ -20,13 +20,18 @@ typedef enum {
     DRIVER_TYPE_NONE = 0,
     DRIVER_TYPE_KEYBOARD = 1,
     DRIVER_TYPE_VIDEO = 2,
-    DRIVER_TYPE_STORAGE = 3
+    DRIVER_TYPE_STORAGE = 3,
+    DRIVER_TYPE_NETWORK = 4
 } DRIVER_TYPE;
+
 typedef struct {
     CHAR16  (*GetKey)(EFI_SYSTEM_TABLE *SytemTables);
     BOOLEAN (*HasKey)(EFI_SYSTEM_TABLE *SytemTables);
+    CHAR16  (*GetKeyRun)(EFI_SYSTEM_TABLE *SytemTables);
+    BOOLEAN (*HasKeyRun)(EFI_SYSTEM_TABLE *SytemTables);
     VOID    (*Reset)(EFI_SYSTEM_TABLE *SytemTables);
 } KEY_DRIVER_IF;
+
 typedef struct {
     EFI_STATUS (*ReadFileByPath)(CHAR16 *path_in, EC16 *out);
     EFI_STATUS (*SetCurrentDisk)(CHAR16 Letter);
@@ -41,6 +46,7 @@ typedef struct {
     EFI_STATUS (*GetFileSize)(CHAR16 *filename, UINT64 *filesize);
     void       (*RegisterrsDisk)();
 } STORAGE_DRIVER_IF;
+
 typedef struct {
     EFI_STATUS (*Init)(EFI_SYSTEM_TABLE *SystemTable);
     VOID       (*ClearScreen)(UINT32 rgb24);
@@ -49,10 +55,20 @@ typedef struct {
     VOID       (*DrawBitmap32)(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0);
     VideoMode* (*GetVideoMode)(VOID);
 } VIDEO_DRIVER_IF;
+
+typedef struct {
+    EFI_STATUS (*Init)(EFI_SYSTEM_TABLE *SystemTable, CHAR16 *NicName, CHAR16 *Password);
+    EFI_STATUS (*TcpConnect)(CHAR16 *Ip, UINT16 Port);
+    EFI_STATUS (*TcpSend)(UINT8 *Data, UINTN Len);
+    EFI_STATUS (*TcpReceive)(UINT8 *Buffer, UINTN *Len);
+    EFI_STATUS (*TcpDisconnect)(VOID);
+    EFI_STATUS (*DnsLookup)(CHAR16 *DomainName, CHAR16 *OutIpStr);
+} NETWORK_DRIVER_IF;
+
 typedef struct {
     DRIVER_TYPE Type;
     UINT8       Priority;
-    VOID*       Interface;
+    VOID* Interface;
 } DRIVER;
 
 BOOLEAN RegisterDriver(DRIVER* Driver);
@@ -61,6 +77,8 @@ VOID INIT(EFI_SYSTEM_TABLE *SytemTables);
 
 CHAR16 GetKey(VOID);
 BOOLEAN HasKey(VOID);
+CHAR16 GetKeyRun(VOID);
+BOOLEAN HasKeyRun(VOID);
 VOID Reset(VOID);
 
 EFI_STATUS ReadFileByPath(CHAR16 *path_in, EC16 *out);
@@ -82,3 +100,11 @@ VOID PUT_PIXEL(INT32 x, INT32 y, UINT32 rgb24);
 VOID DRAW_LINE(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24);
 VOID DRAW_BITMAP32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0);
 VideoMode* GET_CURRENT_VMODE(VOID);
+
+EFI_STATUS INIT_NETWORK_DRIVER(EFI_SYSTEM_TABLE *SystemTable, CHAR16 *NicName, CHAR16 *Password);
+EFI_STATUS NETWORK_TCP_CONNECT(CHAR16 *Ip, UINT16 Port);
+EFI_STATUS NETWORK_TCP_SEND(UINT8 *Data, UINTN Len);
+EFI_STATUS NETWORK_TCP_RECEIVE(UINT8 *Buffer, UINTN *Len);
+EFI_STATUS NETWORK_TCP_DISCONNECT(VOID);
+EFI_STATUS NETWORK_DNS_LOOKUP(CHAR16 *DomainName, CHAR16 *OutIpStr);
+

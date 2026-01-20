@@ -12,13 +12,18 @@
   lib/KeyBord.c
   lib/fat32.c
   lib/Video_Driver.c
+  lib/Network.c
+  lib/Interrup.c
+  lib/task.c
+  lib/pex.c
+  lib/font.c
 
 [Packages]
   MdePkg/MdePkg.dec
   MdeModulePkg/MdeModulePkg.dec
-
 [LibraryClasses]
   UefiApplicationEntryPoint
+  BaseMemoryLib
   UefiLib
   BaseLib              # <--- Должно быть здесь для работы со строками
   MemoryAllocationLib  # <--- Для AllocatePool
@@ -30,6 +35,11 @@
   gEfiSimpleFileSystemProtocolGuid
   gEfiLoadedImageProtocolGuid
   gEfiSimpleTextInputExProtocolGuid
+  gEfiTcp4ProtocolGuid
+  gEfiTcp4ServiceBindingProtocolGuid
+  gEfiDns4ProtocolGuid
+  gEfiDns4ServiceBindingProtocolGuid
+  gEfiCpuArchProtocolGuid
 
 [Guids]
   gEfiFileInfoGuid

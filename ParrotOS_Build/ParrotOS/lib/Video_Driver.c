@@ -4,7 +4,6 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Protocol/GraphicsOutput.h>
 
-// Определяем константы шрифта локально, если они не подтянулись из заголовков
 #ifndef CHAR_W
 #define CHAR_W 8
 #endif
@@ -70,15 +69,12 @@ void scroll_screen_up(int speed_scroll) {
         clear_screen(0x000000);
         return;
     }
-
-    // В UEFI используем CopyMem вместо memcpy
     VOID* dst_addr = (VOID*)vmode.fb;
     VOID* src_addr = (VOID*)(vmode.fb + (UINT64)shift_px * pitch);
     UINTN size_to_copy = (UINTN)(height - shift_px) * pitch;
     
     CopyMem(dst_addr, src_addr, size_to_copy);
 
-    // Очистка появившейся пустой области снизу
     for (UINT32 y = height - shift_px; y < height; y++) {
         volatile UINT8 *line = vmode.fb + (UINT64)y * pitch;
         for (UINT32 x = 0; x < width; x++) {
