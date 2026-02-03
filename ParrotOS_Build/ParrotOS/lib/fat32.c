@@ -467,7 +467,8 @@ VOID Fat32_Storage_INIT(VOID)
         .ReadFile = FAT32_ReadFile,
         .WriteFile = FAT32_WriteFile,
         .GetFileSize = FAT32_GetFileSize,
-        .RegisterrsDisk = Fat32_RegisterrsDisk
+        .RegisterrsDisk = Fat32_RegisterrsDisk,
+        .ListDisks = FAT32_ListDisks
     };
 
     RegisterDriver(&(DRIVER){

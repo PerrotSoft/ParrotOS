@@ -5,7 +5,9 @@
 #include "include/drivers/DriverManager.h"
 #include "include/drivers/Keybord.h"
 #include "include/drivers/fat32.h"
+#include "include/drivers/Audiodrv.h"
 #include "include/drivers/Video_Driver.h"
+#include "include/drivers/Mausedrv.h"
 #include "include/interrup.h"
 #include "include/task.h"
 #include "include/bmp.h"
@@ -15,6 +17,9 @@
 #include <Library/PrintLib.h>
 
 extern VideoMode vmode;
+bool kernal_loop;
+CHAR16* StartFile;
+
 CHAR16* ExceptionNames[] = {
     L"0x00: Division by Zero",
     L"0x01: Debug Exception",
@@ -33,7 +38,11 @@ CHAR16* ExceptionNames[] = {
     L"0x0E: Page Fault"
 };
 
-bool kernal_loop;
+VOID INITDRV(){
+    INIT_VIDEO_DRIVER(gST);
+    INIT_MOUSE();
+    RegisterrsDisk(); 
+}
 VOID EFIAPI Int21h_ConsoleIO (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
@@ -55,15 +64,28 @@ VOID EFIAPI Int22h_Keyboard (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT C
 VOID EFIAPI Int23h_Storage (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
-        case 0x01: ctx->REG_AX = (UINT64)ReadFileByPath((CHAR16*)ctx->REG_CX, (EC16*)ctx->REG_DX); break;
+        case 0x01: {
+            EC16 f;
+            ctx->REG_AX = (UINT64)ReadFileByPath((CHAR16*)ctx->REG_CX, &f); 
+            ctx->REG_DX = (UINT64)f.Message;
+        } break;
         case 0x02: ctx->REG_AX = (UINT64)SetCurrentDisk((CHAR16)ctx->REG_CX); break;
         case 0x03: ctx->REG_AX = (UINT64)WriteFile((CHAR16*)ctx->REG_CX, (UINT16*)ctx->REG_DX, (UINTN)ctx->REG_R8); break;
         case 0x04: ctx->REG_AX = (UINT64)CreateFile((CHAR16*)ctx->REG_CX); break;
         case 0x05: ctx->REG_AX = (UINT64)DeleteFile((CHAR16*)ctx->REG_CX); break;
         case 0x06: ctx->REG_AX = (UINT64)GetFileSize((CHAR16*)ctx->REG_CX, (UINT64*)ctx->REG_DX); break;
         case 0x07: ctx->REG_AX = (UINT64)ChangeDir((CHAR16*)ctx->REG_CX); break;
+        case 0x08: {
+            EC16 resDir = ListDir();
+            ctx->REG_AX = (UINT64)resDir.Message; 
+        } break;
+        case 0x09: {
+            EC16 resDisk = ListDisks(); 
+            ctx->REG_AX = (UINT64)resDisk.Message; 
+        } break;
     }
 }
+
 VOID EFIAPI Int24h_Graphics (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
@@ -74,10 +96,34 @@ VOID EFIAPI Int24h_Graphics (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT C
         case 0x05: ctx->REG_AX = (UINT64)font_load_from_disk((CHAR16*)ctx->REG_CX, (const CHAR16*)ctx->REG_DX); break;
         case 0x06: 
             font_draw_char((const CHAR16*)ctx->REG_CX, (INT32)ctx->REG_DX, (INT32)ctx->REG_R8, (INT32)ctx->REG_R9, (UINT32)ctx->REG_R10, (CHAR16)ctx->REG_R11); 
-            break;
+        break;
         case 0x08: 
             font_draw_string((const CHAR16*)ctx->REG_CX, (INT32)ctx->REG_DX, (INT32)ctx->REG_R8, (INT32)ctx->REG_R9, (UINT32)ctx->REG_R10, (const CHAR16*)ctx->REG_R11); 
-            break;
+        break;
+        case 0x09:
+            ctx->REG_AX = (UINT64)vmode.width;
+            ctx->REG_BX = (UINT64)vmode.height;
+        break;
+        case 0x0A:
+            ctx->REG_AX = (UINT64)GET_PIXEL((INT32)ctx->REG_CX, (INT32)ctx->REG_DX);
+        break;
+        case 0x0B: {
+            EC16 file;
+            ReadFileByPath(L"\\ico_100x100.bmp", &file);
+            ctx->REG_AX = (UINT64)file.Message; 
+        } break;
+        case 0x0C:
+            SWAP_BUFFERS();
+        break;
+        case 0x0D:
+            GPU_UPLOAD_SHADER((VOID*)ctx->Rcx, (UINTN)ctx->Rdx, ctx->R8);
+        break;
+        case 0x0E:
+            GPU_RUN_COMPUTE(ctx->Rcx, (UINT32)ctx->Rdx);
+        break;
+        case 0xF:
+            ctx->Rax = (UINT64)GET_VIDEO_STATUS_STR();
+        break;
     }
 }
 VOID EFIAPI Int25h_MultiTasking (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
@@ -92,29 +138,77 @@ VOID EFIAPI Int25h_MultiTasking (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTE
     }
 }
 VOID EFIAPI Int26h_KernelService (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    #if defined(MDE_CPU_X64)
-        EFI_SYSTEM_CONTEXT_X64* ctx = Context.SystemContextX64;
-        UINTN* reg_ax = &ctx->Rax;
-        UINTN* reg_bx = &ctx->Rbx;
-        UINTN* reg_cx = &ctx->Rcx;
-    #else
-        EFI_SYSTEM_CONTEXT_IA32* ctx = Context.SystemContextIa32;
-        UINTN* reg_ax = (UINTN*)&ctx->Eax;
-        UINTN* reg_bx = (UINTN*)&ctx->Ebx;
-        UINTN* reg_cx = (UINTN*)&ctx->Ecx;
-    #endif
+    SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
 
-    switch (*reg_ax) {
-        case 0x01: 
-            if (*reg_bx <= 0xFF) {
-                RegisterCustomHandler((UINT8)*reg_bx, (MY_HANDLER_FUNC)(UINTN)*reg_cx);
+    switch (ctx->REG_AX) {
+        case 0x01:
+            if (ctx->REG_BX <= 0xFF) {
+                RegisterCustomHandler((UINT8)ctx->REG_BX, (MY_HANDLER_FUNC)ctx->REG_CX);
             }
             break;
-        case 0x02: 
+        case 0x02:
+            ctx->REG_AX = (UINT64)RegisterDriver((DRIVER*)ctx->REG_CX);
+            break;
+        case 0x03:
+            ctx->REG_CX = (UINT64)gImageHandle;
+            ctx->REG_DX = (UINT64)gST;
+            break;
+        case 0x04:
             gRT->ResetSystem(EfiResetWarm, EFI_SUCCESS, 0, NULL);
             break;
-        case 0x03: 
+        case 0x05:
             gRT->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL);
+            break;
+         case 0x06:
+            INITDRV();
+        break;
+    }
+}
+VOID EFIAPI Int27h_Network(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
+    EFI_SYSTEM_CONTEXT_X64* ctx = Context.SystemContextX64;
+
+    switch (ctx->Rax) {
+        case 0x01:
+            ctx->Rax = (UINT64)INIT_NETWORK_DRIVER((CHAR16*)ctx->Rcx, (CHAR16*)ctx->Rdx);
+            break;
+        case 0x02:
+            ctx->Rax = (UINT64)NETWORK_TCP_CONNECT((CHAR16*)ctx->Rcx, (UINT16)ctx->Rdx);
+            break;
+        case 0x03:
+            ctx->Rax = (UINT64)NETWORK_TCP_SEND((UINT8*)ctx->Rcx, (UINTN)ctx->Rdx);
+            break;
+        case 0x04:
+            ctx->Rax = (UINT64)NETWORK_TCP_RECEIVE((UINT8*)ctx->Rcx, (UINTN*)ctx->Rdx);
+            break;
+        case 0x05:
+            ctx->Rax = (UINT64)NETWORK_TCP_DISCONNECT();
+            break;
+        case 0x06:
+            ctx->Rax = (UINT64)NETWORK_DNS_LOOKUP((CHAR16*)ctx->Rcx, (CHAR16*)ctx->Rdx);
+            break;
+    }
+}
+VOID EFIAPI Int28h_Audio(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
+    EFI_SYSTEM_CONTEXT_X64* ctx = Context.SystemContextX64;
+
+    switch (ctx->Rax) {
+        case 0x01:
+            AudioBeep((UINT32)ctx->Rcx, (UINT32)ctx->Rdx);
+            break;
+        case 0x02:
+            ctx->Rax = (UINT64)AudioPlay((UINT8*)ctx->Rcx, (UINTN)ctx->Rdx);
+            break;
+    }
+}
+VOID EFIAPI Int29h_Mouse(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
+    EFI_SYSTEM_CONTEXT_X64* ctx = Context.SystemContextX64;
+
+    switch (ctx->Rax) {
+        case 0x01:
+            ctx->Rax = (UINT64)INIT_MOUSE();
+            break;
+        case 0x02:
+            ctx->Rax = (UINT64)GET_MOUSE_STATE((INT32*)ctx->Rcx, (INT32*)ctx->Rdx, (BOOLEAN*)ctx->R8, (BOOLEAN*)ctx->R9);
             break;
     }
 }
@@ -164,6 +258,7 @@ VOID EFIAPI CommonExceptionHandler (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CO
         KernelPanic(L"Unknown Hardware Exception", Context, (UINT64)Type);
     }
 }
+
 EFI_STATUS draw_logo_from_disk(CHAR16 DiskLetter) {
     INT32 bmp_x = (INT32)(vmode.width / 2 - 50);
     INT32 bmp_y = (INT32)(vmode.height / 2 - 50);
@@ -174,7 +269,6 @@ EFI_STATUS draw_logo_from_disk(CHAR16 DiskLetter) {
     CLEAR_SCREEN(0x000000);
     return draw_bmp_from_memory_safe((UINT8*)file.Message, file.FileSize, bmp_x, bmp_y);
 }
-CHAR16* StartFile;
 void kernal() {
     Fat32_RegisterrsDisk(); 
     INT32 tl_x = (INT32)(vmode.width / 2 - 50);
@@ -215,14 +309,20 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
 {
     gST = SystemTable;
     gBS = SystemTable->BootServices;
+    gRT = SystemTable->RuntimeServices;
     gST->BootServices->SetWatchdogTimer(0, 0, 0, NULL);
     INIT(SystemTable);
     init_vd();
-    INIT_VIDEO_DRIVER(SystemTable);
-    Keyboard_INIT();
     Fat32_Storage_INIT();
-    Fat32_RegisterrsDisk(); 
+    Keyboard_INIT();
+    InitSimpleAudio();
+    RegisterMouseDriver();
+    
+    INITDRV();
+
     draw_logo_from_disk('A');
+    SWAP_BUFFERS();
+
     RegisterCustomHandler(0x00, CommonExceptionHandler); // Division by Zero
     RegisterCustomHandler(0x01, CommonExceptionHandler); // Debug
     RegisterCustomHandler(0x02, CommonExceptionHandler); // NMI
@@ -245,19 +345,23 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
     RegisterCustomHandler(0x24, Int24h_Graphics);
     RegisterCustomHandler(0x25, Int25h_MultiTasking);
     RegisterCustomHandler(0x26, Int26h_KernelService);
+    RegisterCustomHandler(0x27, Int27h_Network);
+    RegisterCustomHandler(0x28, Int28h_Audio);
+    RegisterCustomHandler(0x29, Int29h_Mouse);
+
     init_scheduler();
     font_init();
+    
     kernal_loop = true;
     StartFile=L"start.pex";
     font_load_from_disk(L"system.ttf", L"SysFont");
-
     INT32 tl_x = (INT32)(vmode.width / 2 - 50);
     INT32 tl_y = (INT32)(vmode.height / 2 + 74);
     font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
+    SWAP_BUFFERS();
     kernal_loop = true;
     task_create(0,kernal);
-    
+    SWAP_BUFFERS();
     task_start_first();
-    
     return EFI_SUCCESS;
 }

@@ -174,70 +174,83 @@ VOID RegisterrsDisk()
     STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
     storage->RegisterrsDisk();
 }
-
-EFI_STATUS INIT_VIDEO_DRIVER(EFI_SYSTEM_TABLE *SystemTable)
+EC16 ListDisks()
 {
-    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
-    if (!drv || !drv->Interface)
-        return EFI_NOT_FOUND;
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_STORAGE);
+    if (!drv || !drv->Interface) {
+        EC16 error_res = { EFI_NOT_FOUND, NULL, 0 };
+        return error_res;
+    }
 
-    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
-    return video->Init(SystemTable);
+    STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
+    return storage->ListDisks();
 }
-VOID CLEAR_SCREEN(UINT32 rgb24)
-{
+EFI_STATUS INIT_VIDEO_DRIVER(EFI_SYSTEM_TABLE *SystemTable) {
     DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
-    if (!drv || !drv->Interface)
-        return;
-
-    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
-    video->ClearScreen(rgb24);
-}
-VOID PUT_PIXEL(INT32 x, INT32 y, UINT32 rgb24)
-{
-    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
-    if (!drv || !drv->Interface)
-        return;
-
-    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
-    video->PutPixel(x, y, rgb24);
-}
-VOID DRAW_LINE(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24)
-{
-    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
-    if (!drv || !drv->Interface)
-        return;
-
-    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
-    video->DrawLine(x0, y0, x1, y1, rgb24);
-}
-VOID DRAW_BITMAP32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0)
-{
-    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
-    if (!drv || !drv->Interface)
-        return;
-
-    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
-    video->DrawBitmap32(bmp, bmp_w, bmp_h, x0, y0);
-}
-VideoMode* GET_CURRENT_VMODE(VOID)
-{
-    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
-    if (!drv || !drv->Interface)
-        return NULL;
-
-    VIDEO_DRIVER_IF* video = (VIDEO_DRIVER_IF*)drv->Interface;
-    return video->GetVideoMode();
+    if (!drv || !drv->Interface) return EFI_NOT_FOUND;
+    return ((VIDEO_DRIVER_IF*)drv->Interface)->Init(SystemTable);
 }
 
-EFI_STATUS INIT_NETWORK_DRIVER(EFI_SYSTEM_TABLE *SystemTable, CHAR16 *NicName, CHAR16 *Password)
+VOID CLEAR_SCREEN(UINT32 rgb24) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) ((VIDEO_DRIVER_IF*)drv->Interface)->ClearScreen(rgb24);
+}
+
+VOID PUT_PIXEL(INT32 x, INT32 y, UINT32 rgb24) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) ((VIDEO_DRIVER_IF*)drv->Interface)->PutPixel(x, y, rgb24);
+}
+
+VOID DRAW_LINE(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) ((VIDEO_DRIVER_IF*)drv->Interface)->DrawLine(x0, y0, x1, y1, rgb24);
+}
+
+VOID DRAW_BITMAP32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) ((VIDEO_DRIVER_IF*)drv->Interface)->DrawBitmap32(bmp, bmp_w, bmp_h, x0, y0);
+}
+
+VideoMode* GET_CURRENT_VMODE(VOID) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) return ((VIDEO_DRIVER_IF*)drv->Interface)->GetVideoMode();
+    return NULL;
+}
+
+UINT32 GET_PIXEL(INT32 x, INT32 y) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) return ((VIDEO_DRIVER_IF*)drv->Interface)->Get_Pixel(x, y);
+    return 0;
+}
+
+VOID SWAP_BUFFERS(VOID) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) ((VIDEO_DRIVER_IF*)drv->Interface)->SwapBuffers();
+}
+
+VOID GPU_UPLOAD_SHADER(VOID* Code, UINTN Size, UINT64 Offset) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) ((VIDEO_DRIVER_IF*)drv->Interface)->UploadShader(Code, Size, Offset);
+}
+
+VOID GPU_RUN_COMPUTE(UINT64 Offset, UINT32 Threads) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) ((VIDEO_DRIVER_IF*)drv->Interface)->RunCompute(Offset, Threads);
+}
+
+const CHAR8* GET_VIDEO_STATUS_STR(VOID) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
+    if (drv && drv->Interface) return ((VIDEO_DRIVER_IF*)drv->Interface)->GetDriverType();
+    return "No Video Driver";
+}
+EFI_STATUS INIT_NETWORK_DRIVER(CHAR16 *NicName, CHAR16 *Password)
 {
     DRIVER* drv = GetBestDriver(DRIVER_TYPE_NETWORK);
     if (!drv || !drv->Interface)
         return EFI_NOT_FOUND;
 
     NETWORK_DRIVER_IF* net = (NETWORK_DRIVER_IF*)drv->Interface;
-    return net->Init(SystemTable, NicName, Password);
+    return net->Init( SystemTables, NicName, Password);
 }
 
 EFI_STATUS NETWORK_TCP_CONNECT(CHAR16 *Ip, UINT16 Port)
@@ -287,4 +300,33 @@ EFI_STATUS NETWORK_DNS_LOOKUP(CHAR16 *DomainName, CHAR16 *OutIpStr)
 
     NETWORK_DRIVER_IF* net = (NETWORK_DRIVER_IF*)drv->Interface;
     return net->DnsLookup(DomainName, OutIpStr);
+}
+EFI_STATUS INIT_MOUSE(VOID) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_MOUSE);
+    if (!drv || !drv->Interface) return EFI_NOT_FOUND;
+    return ((MOUSE_DRIVER_IF*)drv->Interface)->Init();
+}
+
+EFI_STATUS GET_MOUSE_STATE(INT32 *x, INT32 *y, BOOLEAN *lb, BOOLEAN *rb) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_MOUSE);
+    if (!drv || !drv->Interface) return EFI_NOT_FOUND;
+    return ((MOUSE_DRIVER_IF*)drv->Interface)->GetState(x, y, lb, rb);
+}
+
+EFI_STATUS INIT_AUDIO(VOID) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_AUDIO);
+    if (!drv || !drv->Interface) return EFI_NOT_FOUND;
+    return ((AUDIO_DRIVER_IF*)drv->Interface)->Init();
+}
+
+VOID AudioBeep(UINT32 Freq, UINT32 Dur) {
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_AUDIO);
+    if (drv && drv->Interface) {
+        ((AUDIO_DRIVER_IF*)drv->Interface)->Beep(Freq, Dur);
+    }
+}
+EFI_STATUS AudioPlay(UINT8 *Data, UINTN Size) {
+    DRIVER* d = GetBestDriver(DRIVER_TYPE_AUDIO);
+    if (d && d->Interface) return ((AUDIO_DRIVER_IF*)d->Interface)->PlayRaw(Data, Size);
+    return EFI_NOT_FOUND;
 }

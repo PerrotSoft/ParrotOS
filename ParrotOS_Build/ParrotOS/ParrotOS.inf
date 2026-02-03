@@ -17,6 +17,8 @@
   lib/task.c
   lib/pex.c
   lib/font.c
+  lib/AudioDriver.c
+  lib/MouseDriver.c
 
 [Packages]
   MdePkg/MdePkg.dec
@@ -40,6 +42,8 @@
   gEfiDns4ProtocolGuid
   gEfiDns4ServiceBindingProtocolGuid
   gEfiCpuArchProtocolGuid
+  gEfiSimplePointerProtocolGuid
+  gEfiPciIoProtocolGuid
 
 [Guids]
   gEfiFileInfoGuid

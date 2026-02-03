@@ -88,10 +88,36 @@ static INT32 font_draw_char_internal(font_t* f, INT32 f_id, INT32 x, INT32 y, IN
         unsigned char* bitmap = stbtt_GetCodepointBitmap(&ttf_info[f_id], 0, scale, c, &width, &height, 0, 0);
 
         if (bitmap) {
-            for (int iy = 0; iy < height; iy++) {
-                for (int ix = 0; ix < width; ix++) {
-                    if (bitmap[iy * width + ix] > 100) {
-                        PUT_PIXEL(x + x0 + ix, y + y0 + iy, color);
+            for (INT32 iy = 0; iy < height; iy++) {
+                for (INT32 ix = 0; ix < width; ix++) {
+                    UINT8 alpha = bitmap[iy * width + ix];
+                    if (alpha == 0) continue;
+
+                    INT32 px = x + x0 + ix;
+                    INT32 py = y + y0 + iy;
+
+                    if (alpha == 255) {
+                        PUT_PIXEL(px, py, color);
+                    } else {
+                        // Получаем цвет фона через системный интерфейс
+                        UINT32 bg = GET_PIXEL(px, py);
+
+                        // Каналы шрифта
+                        UINT8 rf = (UINT8)((color >> 16) & 0xFF);
+                        UINT8 gf = (UINT8)((color >> 8) & 0xFF);
+                        UINT8 bf = (UINT8)(color & 0xFF);
+
+                        // Каналы фона
+                        UINT8 rb = (UINT8)((bg >> 16) & 0xFF);
+                        UINT8 gb = (UINT8)((bg >> 8) & 0xFF);
+                        UINT8 bb = (UINT8)(bg & 0xFF);
+
+                        // Alpha Blending
+                        UINT8 r = (UINT8)((rf * alpha + rb * (255 - alpha)) / 255);
+                        UINT8 g = (UINT8)((gf * alpha + gb * (255 - alpha)) / 255);
+                        UINT8 b = (UINT8)((bf * alpha + bb * (255 - alpha)) / 255);
+
+                        PUT_PIXEL(px, py, (UINT32)((r << 16) | (g << 8) | b));
                     }
                 }
             }

@@ -8,6 +8,7 @@
   #define SYSTEM_CONTEXT_TYPE EFI_SYSTEM_CONTEXT_X64
   #define CTX_FIELD SystemContextX64
   #define REG_AX Rax
+  #define REG_BX Rbx
   #define REG_CX Rcx
   #define REG_DX Rdx
   #define REG_R8 R8

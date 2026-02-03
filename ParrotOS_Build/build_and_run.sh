@@ -40,9 +40,9 @@ mkisofs -U -A "MyUEFI" -V "UEFI_BOOT" -J -joliet-long -r -v \
     -eltorito-alt-boot -e EFI/BOOT/BOOTX64.EFI -no-emul-boot \
     -o "$ISO_FILE" "$USB_ROOT"
 
-qemu-system-x86_64 -hda "$IMG_FILE" -m 256M -bios /usr/share/ovmf/OVMF.fd -net none -netdev user,id=net0 \
-  -device e1000,netdev=net0
-
+qemu-system-x86_64 -hda "$IMG_FILE" -m 512M -bios /usr/share/ovmf/OVMF.fd \
+  -vga std -net none -netdev user,id=net0 -device e1000,netdev=net0 \
+  -usb -device usb-tablet
 echo "------------------------------------------------"
 read -p "Хотите записать проект на флешку? (y/n): " flash_yn
 if [[ $flash_yn == [Yy]* ]]; then
