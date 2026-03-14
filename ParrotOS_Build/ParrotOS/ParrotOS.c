@@ -366,18 +366,18 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
     INT32 tl_x = (INT32)(vmode.width / 2 - 50);
     INT32 tl_y = (INT32)(vmode.height / 2 + 74);
     font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
-    CHAR16 build_ver_unicode[64]; 
+    CHAR16 build_ver_unicode[128]; 
     AsciiToUnicode(BUILD_VERSION, build_ver_unicode);
     CHAR16* ptr = build_ver_unicode;
     while (*ptr) ptr++;
-    *ptr++ = L' ';
-    *ptr++ = L'B';
-    *ptr++ = L'u';
-    *ptr++ = L'i';
-    *ptr++ = L'l';
-    *ptr++ = L'd';
+    *ptr++ = L' '; *ptr++ = L'B'; *ptr++ = L'u'; *ptr++ = L'i'; *ptr++ = L'l'; *ptr++ = L'd';
+    *ptr++ = L' '; *ptr++ = L' '; *ptr++ = L' '; *ptr++ = L' ';
+    const CHAR16* dev_text = L"Developed by ParrotSoft";
+    while (*dev_text) {
+        *ptr++ = *dev_text++;
+    }
     *ptr = L'\0';
-    font_draw_string(L"SysFont", tl_x, vmode.height - 20, 12, 0xAAAAAA, build_ver_unicode);
+    font_draw_string(L"SysFont", tl_x, vmode.height - 25, 12, 0xAAAAAA, build_ver_unicode);
     SWAP_BUFFERS();
     kernal_loop = true;
     task_create(0,kernal);
