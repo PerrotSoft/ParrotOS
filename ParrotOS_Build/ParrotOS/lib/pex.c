@@ -24,25 +24,39 @@ struct g {
 EFI_STATUS LoadAndStartPex(CHAR16* Path) {
     EFI_STATUS Status;
     EC16 file;
-    struct g f1;
-    f1.HI = t;
-    f1.f = f;
+    struct g* f1 = NULL;
+
+    // Выделяем память через Boot Services
+    Status = gBS->AllocatePool(EfiLoaderData, sizeof(struct g), (VOID**)&f1);
+    if (EFI_ERROR(Status)) return EFI_OUT_OF_RESOURCES;
+
     INT32 id = FindFreeTaskSlot();
-    f1.id = id;
-    if (id == -1) return EFI_OUT_OF_RESOURCES;
+    if (id == -1) {
+        gBS->FreePool(f1);
+        return EFI_OUT_OF_RESOURCES;
+    }
+
+    f1->HI = t;
+    f1->f = f;
+    f1->id = id;
 
     Status = ReadFileByPath(Path, &file);
-    if (EFI_ERROR(Status)) return Status;
+    if (EFI_ERROR(Status)) {
+        gBS->FreePool(f1);
+        return Status;
+    }
 
-    // Используем L"PEX", так как UEFI работает с CHAR16.
-    // Если передать "PEX", адрес будет верным, но данные — неверно интерпретированы.
-    Status = task_create_with_arg(id, (VOID (*)(VOID*))file.Message, &f1);
+    // Передаем указатель на выделенную структуру
+    Status = task_create_with_arg(id, (VOID (*)(VOID*))file.Message, f1);
     
     if (EFI_ERROR(Status)) {
+        gBS->FreePool(f1);
         gBS->FreePool(file.Message); 
         return Status;
     }
     
     tasks[id].storage = file.Message;
+    // ВАЖНО: f1 не удаляем здесь, он должен жить, пока работает программа!
+    
     return EFI_SUCCESS;
 }
