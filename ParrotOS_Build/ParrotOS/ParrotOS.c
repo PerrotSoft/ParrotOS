@@ -136,7 +136,14 @@ VOID EFIAPI Int25h_MultiTasking (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTE
         case 0x03: task_exit(); break;
         case 0x04: ctx->REG_AX = (UINT64)current_task; break;
         case 0x05: task_start_first(); break;
-        case 0x06: ctx->REG_AX = (UINT64)LoadAndStartPex((CHAR16*)ctx->REG_CX); break;
+        case 0x06: 
+            if (ctx->REG_DX != 0) {
+                struct Process* init_ptr = (struct Process*)ctx->REG_DX;
+                ctx->REG_AX = (UINT64)LoadAndStartPex((CHAR16*)ctx->REG_CX, *init_ptr); 
+            } else {
+                ctx->REG_AX = (UINT64)EFI_INVALID_PARAMETER;
+            }
+            break;
     }
 }
 VOID EFIAPI Int26h_KernelService (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
@@ -288,7 +295,14 @@ void kernal() {
         if (file.Message != NULL) {
             FreePool(file.Message);
         }
-        Status = LoadAndStartPex(StartFile);
+        const CHAR16* args[] = { L"0.2b", L"yka", L"posbm", NULL }; 
+
+        struct Process p;
+        p.Name = L"Kernel";
+        p.ArgContext = (void*)args;
+        p.rights = RIGHT_SYS; 
+
+        Status = LoadAndStartPex(StartFile, p);
         
         if (EFI_ERROR(Status)) {
             CHAR16 Buffer[100];

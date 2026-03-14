@@ -26,6 +26,7 @@ EFI_STATUS task_create_with_arg(INT32 id, VOID (*entry)(VOID*), VOID* arg);
 VOID task_yield(VOID);
 VOID task_exit(VOID);
 VOID task_exitx(INT32 id);
+VOID task_stop_and_run(INT32 id);
 VOID task_start_first(VOID);
 
 #endif

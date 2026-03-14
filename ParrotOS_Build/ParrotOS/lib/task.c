@@ -31,6 +31,11 @@ VOID task_exit(VOID) {
     task_yield();
 }
 
+VOID task_stop_and_run(INT32 id) {
+    tasks[id].active = !tasks[id].active;
+}
+
+
 VOID task_exitx(INT32 id) {
     tasks[id].active = FALSE;
 
