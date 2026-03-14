@@ -12,7 +12,9 @@ INT32 FindFreeTaskSlot(VOID) {
     }
     return -1;
 }
-
+void t(){
+    Print(L"g");
+}
 EFI_STATUS LoadAndStartPex(CHAR16* Path) {
     EFI_STATUS Status;
     EC16 file;
@@ -25,7 +27,7 @@ EFI_STATUS LoadAndStartPex(CHAR16* Path) {
 
     // Используем L"PEX", так как UEFI работает с CHAR16.
     // Если передать "PEX", адрес будет верным, но данные — неверно интерпретированы.
-    Status = task_create_with_arg(id, (VOID (*)(VOID*))file.Message, L"PEX");
+    Status = task_create_with_arg(id, (VOID (*)(VOID*))file.Message, t);
     
     if (EFI_ERROR(Status)) {
         gBS->FreePool(file.Message); 
