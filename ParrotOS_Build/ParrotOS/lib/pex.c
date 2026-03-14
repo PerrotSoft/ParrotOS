@@ -28,7 +28,7 @@ EFI_STATUS LoadAndStartPex(CHAR16* Path) {
 
     // Используем L"PEX", так как UEFI работает с CHAR16.
     // Если передать "PEX", адрес будет верным, но данные — неверно интерпретированы.
-    Status = task_create_with_arg(id, (VOID (*)(VOID*))file.Message, t);
+    Status = task_create_with_arg(id, (VOID (*)(VOID*))file.Message, &t);
     
     if (EFI_ERROR(Status)) {
         gBS->FreePool(file.Message); 
