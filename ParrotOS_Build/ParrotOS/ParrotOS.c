@@ -15,7 +15,9 @@
 #include "include/font.h"
 #include <stdbool.h>
 #include <Library/PrintLib.h>
-
+#ifndef BUILD_VERSION
+#define BUILD_VERSION "unknown"
+#endif
 extern VideoMode vmode;
 bool kernal_loop;
 CHAR16* StartFile;
@@ -305,6 +307,12 @@ void kernal() {
     }
     task_exit();
 }
+void AsciiToUnicode(const char* src, CHAR16* dest) {
+    while (*src) {
+        *dest++ = (CHAR16)(*src++);
+    }
+    *dest = L'\0'; 
+}
 EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 {
     gST = SystemTable;
@@ -358,6 +366,9 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
     INT32 tl_x = (INT32)(vmode.width / 2 - 50);
     INT32 tl_y = (INT32)(vmode.height / 2 + 74);
     font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
+    CHAR16 build_str[32];
+    AsciiToUnicode(BUILD_VERSION, build_str);
+    font_draw_string(L"SysFont", tl_x, vmode.height - 12, 10, 0xFFFFFF, build_str);
     SWAP_BUFFERS();
     kernal_loop = true;
     task_create(0,kernal);
