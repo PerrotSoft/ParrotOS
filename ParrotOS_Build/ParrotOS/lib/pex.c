@@ -12,8 +12,9 @@ INT32 FindFreeTaskSlot(VOID) {
     }
     return -1;
 }
-void t(){
+CHAR16* t(){
     Print(L"g");
+    return L"hi";
 }
 EFI_STATUS LoadAndStartPex(CHAR16* Path) {
     EFI_STATUS Status;
