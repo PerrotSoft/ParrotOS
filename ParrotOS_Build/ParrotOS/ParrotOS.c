@@ -377,7 +377,7 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
         *ptr++ = *dev_text++;
     }
     *ptr = L'\0';
-    font_draw_string(L"SysFont", vmode.width - 170, vmode.height - 25, 12, 0xAAAAAA, build_ver_unicode);
+    font_draw_string(L"SysFont", vmode.width - 185, vmode.height - 25, 12, 0xAAAAAA, build_ver_unicode);
     SWAP_BUFFERS();
     kernal_loop = true;
     task_create(0,kernal);
