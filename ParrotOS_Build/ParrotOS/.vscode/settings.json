@@ -1,0 +1,27 @@
+{
+    "files.associations": {
+        "cmd_pos.h": "c",
+        "console.h": "c",
+        "stdint.h": "c",
+        "string.h": "c",
+        "stdbool.h": "c",
+        "shutdown.h": "c",
+        "stdlib.h": "c",
+        "typeinfo": "c",
+        "interrupts.h": "c",
+        "ram_fs.h": "c",
+        "memory.h": "c",
+        "timer.h": "c",
+        "tasks.h": "c",
+        "ostream": "c",
+        "stdio.h": "c",
+        "array": "c",
+        "string_view": "c",
+        "format": "c",
+        "initializer_list": "c",
+        "span": "c",
+        "sstream": "c",
+        "random": "c",
+        "ramfs.h": "c"
+    }
+}
