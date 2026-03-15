@@ -70,7 +70,7 @@ EFI_STATUS LoadAndStartPex(CHAR16* Path, struct Process init_data) {
 
     pr->ID = id;
     pr->storage = e.Message;
-    pr->GetProtocol = Kernel_GetProtocol;
+    pr->GetProtocol = (void*)Kernel_GetProtocol;
     prs.Push(id, pr);
 
     Status = task_create_with_arg(id, (VOID (*)(VOID*))e.Message, pr);
