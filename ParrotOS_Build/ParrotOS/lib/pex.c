@@ -4,6 +4,7 @@
 #include <Library/MemoryAllocationLib.h>
 #include "../include/drivers/DriverManager.h"
 #include "../include/Vector.h"
+#include "../include/Protocols.h"
 Vector prs;
 
 void ProcessManagerInit() {
@@ -12,24 +13,6 @@ void ProcessManagerInit() {
 
 struct Process* GetTaskById(INT32 ID) {
     return (struct Process*)prs.GetById(ID);
-}
-
-UINT8 Kernel_GetProtocol(INT32 id,UINT32 protocol_id, VOID** out_protocol) {
-    INT32 curr_id = id; 
-    struct Process* pr = GetTaskById(curr_id);
-    
-    if (!pr || !out_protocol) return 0;
-
-    if (protocol_id == 100 && pr->rights > RIGHT_ADMIN) {
-        return 0;
-    }
-    *out_protocol = NULL; 
-    return 1;
-}
-
-UINT8 PExit() {
-    task_exit();
-    return 1;
 }
 
 void TaskStop(INT32 ID) {
@@ -87,7 +70,6 @@ EFI_STATUS LoadAndStartPex(CHAR16* Path, struct Process init_data) {
 
     pr->ID = id;
     pr->storage = e.Message;
-    pr->Exit = PExit;
     pr->GetProtocol = Kernel_GetProtocol;
     prs.Push(id, pr);
 
