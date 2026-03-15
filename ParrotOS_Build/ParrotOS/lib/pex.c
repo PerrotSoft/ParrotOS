@@ -3,7 +3,7 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/MemoryAllocationLib.h>
 #include "../include/drivers/DriverManager.h"
-
+#include "../include/Vector.h"
 Vector prs;
 
 void ProcessManagerInit() {
@@ -11,7 +11,7 @@ void ProcessManagerInit() {
 }
 
 struct Process* GetTaskById(INT32 ID) {
-    return (struct Process*)prs.GetById(&prs, ID);
+    return (struct Process*)prs.GetById(ID);
 }
 
 UINT8 EFIAPI Kernel_GetProtocol(UINT32 protocol_id, VOID** out_protocol) {
@@ -35,7 +35,7 @@ UINT8 EFIAPI PExit() {
 void TaskStop(INT32 ID) {
     task_stop_and_run(ID);
 
-    struct Process* p = (struct Process*)prs.GetById(&prs, ID);
+    struct Process* p = (struct Process*)prs.GetById(ID);
     if (p != NULL) {
         p->active = !p->active;
     }
@@ -49,7 +49,7 @@ UINT8 Process_Exit(INT32 ID) {
     if (pr->storage) {
         gBS->FreePool(pr->storage);
     }
-    prs.Remove(&prs, ID);
+    prs.Remove(ID);
     gBS->FreePool(pr);
     
     return 1;
@@ -64,33 +64,34 @@ INT32 FindFreeTaskSlot(VOID) {
 }
 EFI_STATUS LoadAndStartPex(CHAR16* Path, struct Process init_data) {
     EFI_STATUS Status;
-    void* buffer = NULL;
     EC16 e;
     struct Process* pr = NULL;
+    if (prs._push == NULL) ProcessManagerInit();
 
     Status = gBS->AllocatePool(EfiLoaderData, sizeof(struct Process), (VOID**)&pr);
     if (EFI_ERROR(Status)) return Status;
-    *pr = init_data;
+    
+    gBS->CopyMem(pr, &init_data, sizeof(struct Process));
 
     INT32 id = FindFreeTaskSlot();
     if (id == -1) {
         gBS->FreePool(pr);
         return EFI_OUT_OF_RESOURCES;
     }
+
     Status = ReadFileByPath(Path, &e);
-    buffer = e.Message;
     if (EFI_ERROR(Status)) {
         gBS->FreePool(pr);
         return Status;
     }
 
     pr->ID = id;
-    pr->storage = buffer;
+    pr->storage = e.Message;
     pr->Exit = PExit;
     pr->GetProtocol = Kernel_GetProtocol;
-    prs.Push(&prs, id, pr);
+    prs.Push(id, pr);
 
-    Status = task_create_with_arg(id, (VOID (*)(VOID*))buffer, pr);
+    Status = task_create_with_arg(id, (VOID (*)(VOID*))e.Message, pr);
     
     if (EFI_ERROR(Status)) {
         Process_Exit(id);

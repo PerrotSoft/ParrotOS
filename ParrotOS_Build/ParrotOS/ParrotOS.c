@@ -15,6 +15,7 @@
 #include "include/font.h"
 #include <stdbool.h>
 #include <Library/PrintLib.h>
+#define __UEFI__
 #ifndef BUILD_VERSION
 #define BUILD_VERSION "unknown"
 #endif
