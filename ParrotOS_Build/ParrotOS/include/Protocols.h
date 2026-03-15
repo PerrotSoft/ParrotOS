@@ -1,3 +1,6 @@
+#ifndef PROTOCOLS_H
+#define PROTOCOLS_H
+
 #include <Uefi.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
@@ -17,15 +20,16 @@ UINT8 Internal_fds() {
 }
 
 void Internal_test() {
-    Print(L"test\n");
+    Print(L"gfd");
 }
 
 void Internal_test1(CHAR16* g) {
+    // Временно оставляем пустой.
     if (g != NULL) {
-        Print(L"%s\n", g);
+        Print(g);
     }
 }
-// Изменено: UINT8 вместо VOID
+
 UINT8 Kernel_GetProtocol(INT32 id, UINT32 protocol_id, VOID** out_protocol) {
     if (out_protocol == NULL) {
         return 1; // Ошибка: некуда записывать
@@ -48,3 +52,5 @@ UINT8 Kernel_GetProtocol(INT32 id, UINT32 protocol_id, VOID** out_protocol) {
 
     return 0; // Успех
 }
+
+#endif
