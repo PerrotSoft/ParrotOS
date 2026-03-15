@@ -5,6 +5,7 @@
 #include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/MemoryAllocationLib.h>
+#include "font.h"
 
 struct Protocol_Col {
     UINT32 ID;              // Программный ID
@@ -20,13 +21,13 @@ UINT8 Internal_fds() {
 }
 
 void Internal_test() {
-    Print(L"gfd");
+    
 }
 
 void Internal_test1(CHAR16* g) {
     // Временно оставляем пустой.
     if (g != NULL) {
-        Print(g);
+        font_draw_string(L"SysFont", 280, 25, 12, 0xAAAAAA, g);
     }
 }
 
