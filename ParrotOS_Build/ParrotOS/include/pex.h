@@ -21,7 +21,6 @@ struct Process {
     void* ArgContext; 
     void* storage;
     BOOLEAN active;
-    UINTN stack_base; 
     INT32 ParentID;
 
     UINT8 (EFIAPI *Exit)();
