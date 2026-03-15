@@ -25,9 +25,7 @@ void Internal_test1(CHAR16* g) {
         Print(L"%s\n", g);
     }
 }
-
-// --- Основная функция ---
-
+// Изменено: UINT8 вместо VOID
 UINT8 Kernel_GetProtocol(INT32 id, UINT32 protocol_id, VOID** out_protocol) {
     if (out_protocol == NULL) {
         return 1; // Ошибка: некуда записывать
@@ -40,7 +38,7 @@ UINT8 Kernel_GetProtocol(INT32 id, UINT32 protocol_id, VOID** out_protocol) {
     }
 
     // Заполняем данными
-    new_proto->ID = (UINT32)id; // Используем программный ID
+    new_proto->ID = (UINT32)id; 
     new_proto->fds = Internal_fds;
     new_proto->test = Internal_test;
     new_proto->test1 = Internal_test1;
@@ -48,6 +46,5 @@ UINT8 Kernel_GetProtocol(INT32 id, UINT32 protocol_id, VOID** out_protocol) {
     // Возвращаем результат
     *out_protocol = (VOID*)new_proto;
 
-    // Здесь можно добавить логику выбора в зависимости от protocol_id, если нужно
     return 0; // Успех
 }
