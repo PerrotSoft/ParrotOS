@@ -23,8 +23,8 @@ struct Process {
     BOOLEAN active;
     INT32 ParentID;
 
-    UINT8 (*Exit)();
-    UINT8 (*GetProtocol)(UINT32 protocol_id, VOID** out_protocol);
+    UINT8 (*Exit)(INT32 id);
+    UINT8 (*GetProtocol)(INT32 id,UINT32 protocol_id, VOID** out_protocol);
 };
 
 void       ProcessManagerInit();

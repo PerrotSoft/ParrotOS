@@ -14,8 +14,8 @@ struct Process* GetTaskById(INT32 ID) {
     return (struct Process*)prs.GetById(ID);
 }
 
-UINT8 Kernel_GetProtocol(UINT32 protocol_id, VOID** out_protocol) {
-    INT32 curr_id = current_task; 
+UINT8 Kernel_GetProtocol(INT32 id,UINT32 protocol_id, VOID** out_protocol) {
+    INT32 curr_id = id; 
     struct Process* pr = GetTaskById(curr_id);
     
     if (!pr || !out_protocol) return 0;
@@ -27,8 +27,7 @@ UINT8 Kernel_GetProtocol(UINT32 protocol_id, VOID** out_protocol) {
     return 1;
 }
 
-UINT8 PExit() {
-    INT32 id = current_task;
+UINT8 PExit(INT32 id) {
     return Process_Exit(id);
 }
 
