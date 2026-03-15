@@ -47,3 +47,5 @@
 
 [Guids]
   gEfiFileInfoGuid
+[BuildOptions]
+  GCC:*_*_*_CC_FLAGS = -DBUILD_VERSION=$(BUILD_VERSION)

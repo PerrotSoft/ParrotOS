@@ -15,9 +15,13 @@
 #include "include/font.h"
 #include <stdbool.h>
 #include <Library/PrintLib.h>
-#define __UEFI__
+#define STR_HELPER(x) #x
+#define STR(x) STR_HELPER(x)
+
 #ifndef BUILD_VERSION
-#define BUILD_VERSION "unknown"
+    #define ACTUAL_BUILD "0"
+#else
+    #define ACTUAL_BUILD STR(BUILD_VERSION)
 #endif
 extern VideoMode vmode;
 bool kernal_loop;
@@ -382,21 +386,23 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
     INT32 tl_y = (INT32)(vmode.height / 2 + 74);
     font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
     CHAR16 build_ver_unicode[128]; 
-    AsciiToUnicode(BUILD_VERSION, build_ver_unicode);
-    CHAR16* ptr = build_ver_unicode;
-    while (*ptr) ptr++;
-    *ptr++ = L' '; *ptr++ = L'B'; *ptr++ = L'u'; *ptr++ = L'i'; *ptr++ = L'l'; *ptr++ = L'd';
-    *ptr++ = L' '; *ptr++ = L' '; *ptr++ = L' '; *ptr++ = L' ';
-    const CHAR16* dev_text = L"Developed by ParrotSoft";
-    while (*dev_text) {
-        *ptr++ = *dev_text++;
+    AsciiToUnicode(ACTUAL_BUILD, build_ver_unicode);
+    UINTN current_len = 0;
+    while (build_ver_unicode[current_len] != L'\0' && current_len < 60) {
+        current_len++;
     }
-    *ptr = L'\0';
-    font_draw_string(L"SysFont", vmode.width - 185, vmode.height - 25, 12, 0xAAAAAA, build_ver_unicode);
+
+    UnicodeSPrint(&build_ver_unicode[current_len], 
+                  sizeof(build_ver_unicode) - (current_len * 2), 
+                  L" Build    Developed by ParrotSoft");
+
+    font_draw_string(L"SysFont", vmode.width - 280, vmode.height - 25, 12, 0xAAAAAA, build_ver_unicode);
     SWAP_BUFFERS();
     kernal_loop = true;
     task_create(0,kernal);
     SWAP_BUFFERS();
     task_start_first();
+    draw_logo_from_disk('A');
+    SWAP_BUFFERS();
     return EFI_SUCCESS;
 }

@@ -27,8 +27,9 @@ UINT8 Kernel_GetProtocol(INT32 id,UINT32 protocol_id, VOID** out_protocol) {
     return 1;
 }
 
-UINT8 PExit(INT32 id) {
-    return Process_Exit(id);
+UINT8 PExit() {
+    task_exit();
+    return 1;
 }
 
 void TaskStop(INT32 ID) {

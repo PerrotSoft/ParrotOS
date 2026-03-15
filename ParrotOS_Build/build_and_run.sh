@@ -18,7 +18,7 @@ mkdir -p "$OUTPUT_DIR"
 echo "--- Сборка UEFI приложения ---"
 cd "$SDK_DIR"
 source edksetup.sh
-build -a X64 -t GCC5 -p "$DSC_FILE"
+build -a X64 -t GCC5 -p "$DSC_FILE" -D BUILD_VERSION="$BUILD_NUMBER"
 cd "$HW_DIR"
 
 if [ ! -f "$EFI_SOURCE" ]; then
