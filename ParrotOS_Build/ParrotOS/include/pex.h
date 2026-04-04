@@ -6,24 +6,14 @@
 
 #define Min_Process 10
 
-typedef enum {
-    RIGHT_SYS, 
-    RIGHT_ROOT,
-    RIGHT_ADMIN,
-    RIGHT_USER
-} PROCESS_RIGHTS;
-
-struct Process {
+struct Process { 
     INT32 ID;
     const CHAR16* Name;
-    PROCESS_RIGHTS rights;
-    
-    void* ArgContext; 
-    void* storage;
+    UINT8 Rights;
+    VOID* ArgContext; 
+    VOID* storage;
     BOOLEAN active;
     INT32 ParentID;
-
-    UINT8 (*GetProtocol)(INT32 id,UINT32 protocol_id, VOID** out_protocol);
 };
 
 void       ProcessManagerInit();

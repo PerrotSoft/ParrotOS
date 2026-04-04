@@ -1,57 +1,61 @@
 #ifndef PROTOCOLS_H
 #define PROTOCOLS_H
+#pragma once
 
 #include <Uefi.h>
 #include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/MemoryAllocationLib.h>
-#include "font.h"
+#include "../include/Vector.h"
+#include "../include/task.h"
+#include "../include/pex.h"
 
-struct Protocol_Col {
-    UINT32 ID;              // Программный ID
-    UINT8 (*fds)();         // Возвращает 123
-    void  (*test)();        // Выводит "test"
-    void  (*test1)(CHAR16* g); // Выводит переданную строку
-};
+typedef struct {
+    int32_t TaskID;    
+    int32_t ProcessID;
+} TASK_PROCESS_MAP;
 
-// --- Реализация функций для структуры ---
+extern Vector task_registry; 
+extern Vector prs;   
+extern int32_t current_task;   
 
-UINT8 Internal_fds() {
-    return 123;
-}
-
-void Internal_test() {
-    
-}
-
-void Internal_test1(CHAR16* g) {
-    // Временно оставляем пустой.
-    if (g != NULL) {
-        font_draw_string(L"SysFont", 280, 25, 12, 0xAAAAAA, g);
+static inline void INIT_PROTOCOLS() {
+    if (task_registry._push == NULL) {
+        VectorInit(&task_registry, 10);
     }
 }
 
-UINT8 Kernel_GetProtocol(INT32 id, UINT32 protocol_id, VOID** out_protocol) {
-    if (out_protocol == NULL) {
-        return 1; // Ошибка: некуда записывать
+static inline struct Process* GetCurrentCallerProcess() {
+    if (task_registry._push == NULL) INIT_PROTOCOLS();
+    int32_t tid = current_task; 
+    for (uint64_t i = 0; i < task_registry._cnt(&task_registry); i++) {
+        TASK_PROCESS_MAP* map = (TASK_PROCESS_MAP*)task_registry._at(&task_registry, i);
+        if (map != NULL && map->TaskID == tid) {
+            return (struct Process*)prs.GetById(map->ProcessID);
+        }
     }
+    return NULL;
+}
 
-    // Выделяем память под структуру протокола
-    struct Protocol_Col* new_proto = AllocateZeroPool(sizeof(struct Protocol_Col));
-    if (new_proto == NULL) {
-        return 2; // Ошибка: нет памяти
+static inline void RegisterTaskToProcess(INT32 tid, INT32 pid) {
+    if (task_registry._push == NULL) INIT_PROTOCOLS();
+    TASK_PROCESS_MAP* map = AllocateZeroPool(sizeof(TASK_PROCESS_MAP));
+    if (map == NULL) return;
+    map->TaskID = tid;
+    map->ProcessID = pid;
+    task_registry._push(&task_registry, tid, map);
+}
+
+static inline void DeRegisterTaskToProcess(INT32 tid) {
+    if (task_registry._push == NULL) INIT_PROTOCOLS();
+    for (uint64_t i = 0; i < task_registry._cnt(&task_registry); i++) {
+        TASK_PROCESS_MAP* map = (TASK_PROCESS_MAP*)task_registry._at(&task_registry, i);
+        if (map != NULL && map->TaskID == tid) {
+            FreePool(map);
+            task_registry._rem(&task_registry, i);
+            return;
+        }
     }
-
-    // Заполняем данными
-    new_proto->ID = (UINT32)id; 
-    new_proto->fds = Internal_fds;
-    new_proto->test = Internal_test;
-    new_proto->test1 = Internal_test1;
-
-    // Возвращаем результат
-    *out_protocol = (VOID*)new_proto;
-
-    return 0; // Успех
 }
 
 #endif

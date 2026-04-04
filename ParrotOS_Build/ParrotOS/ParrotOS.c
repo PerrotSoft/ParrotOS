@@ -13,6 +13,7 @@
 #include "include/bmp.h"
 #include "include/pex.h"
 #include "include/font.h"
+#include "include/Protocols.h"
 #include <stdbool.h>
 #include <Library/PrintLib.h>
 #define STR_HELPER(x) #x
@@ -136,12 +137,21 @@ VOID EFIAPI Int24h_Graphics (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT C
 VOID EFIAPI Int25h_MultiTasking (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
-        case 0x01: task_create((INT32)ctx->REG_CX, (VOID (*)(VOID))ctx->REG_DX); break;
-        case 0x02: task_yield(); break;
-        case 0x03: task_exit(); break;
-        case 0x04: ctx->REG_AX = (UINT64)current_task; break;
-        case 0x05: task_start_first(); break;
-        case 0x06: 
+        case 0x01: 
+            task_create((INT32)ctx->REG_CX, (VOID (*)(VOID))ctx->REG_DX); 
+            RegisterTaskToProcess((INT32)ctx->REG_CX, GetCurrentCallerProcess()->ID); 
+            break;
+        case 0x02: 
+            task_create_with_arg((INT32)ctx->REG_CX, (VOID (*)(VOID*))ctx->REG_DX, (VOID*)ctx->REG_R8); 
+            RegisterTaskToProcess((INT32)ctx->REG_CX, GetCurrentCallerProcess()->ID); 
+            break;
+        case 0x03: task_yield(); break;
+        case 0x04: task_exit(); DeRegisterTaskToProcess(current_task); break;
+        case 0x05: ctx->REG_AX = (UINT64)current_task; break;
+        case 0x06: task_start_first(); break;
+        case 0x07: task_stop_and_run((INT32)ctx->REG_CX); break;
+        case 0x08: task_exitx((INT32)ctx->REG_CX); DeRegisterTaskToProcess((INT32)ctx->REG_CX); break;
+        case 0x09: 
             if (ctx->REG_DX != 0) {
                 struct Process* init_ptr = (struct Process*)ctx->REG_DX;
                 ctx->REG_AX = (UINT64)LoadAndStartPex((CHAR16*)ctx->REG_CX, *init_ptr); 
@@ -289,23 +299,32 @@ void kernal() {
     INT32 tl_y = (INT32)(vmode.height / 2 + 200);
     EC16 file;
     
+    // 1. Проверяем наличие файла перед запуском
     EFI_STATUS Status = ReadFileByPath(StartFile, &file);
 
-    if (EFI_ERROR(Status) || file.Message == NULL||!file.Message) {
+    if (EFI_ERROR(Status) || file.Message == NULL) {
         CHAR16 Buffer[100]; 
-        UnicodeSPrint(Buffer, sizeof(Buffer), L"[ERROR] pex not found! Status: %r", Status);
+        UnicodeSPrint(Buffer, sizeof(Buffer), L"[ERROR] %s not found! Status: %r", StartFile, Status);
         font_draw_string(L"SysFont", tl_x, tl_y, 14, 0xFF0000, Buffer);
-        task_exit();
+        // Не выходим из ядра совсем, даем планировщику работать
+        task_yield(); 
     } else {
-        if (file.Message != NULL) {
-            FreePool(file.Message);
-        }
-        const CHAR16* args[] = { L"0.2b", L"yka", L"posbm", NULL }; 
+        // Мы проверили файл, теперь освобождаем временный буфер, 
+        // так как LoadAndStartPex прочитает его сам правильно в структуру процесса
+        gBS->FreePool(file.Message);
 
+        // 2. Подготовка аргументов (argv)
+        // Внимание: массив должен быть статическим или выделен в Pool, 
+        // чтобы он не исчез из стека, когда функция kernal пойдет дальше
+        static const CHAR16* args[] = { L"0.2b", L"yka", L"posbm", NULL }; 
+
+        // 3. Инициализация структуры процесса (Pyredoft API style)
         struct Process p;
-        p.Name = L"Kernel";
+        p.Name = L"KernelInit";
         p.ArgContext = (void*)args;
-        p.rights = RIGHT_SYS; 
+        p.Rights = 0; // Самый высокий приоритет для системного процесса
+        p.active = TRUE;
+        p.ParentID = 0;
 
         Status = LoadAndStartPex(StartFile, p);
         
@@ -315,15 +334,27 @@ void kernal() {
             font_draw_string(L"SysFont", tl_x, tl_y, 14, 0xFF0000, Buffer);
         }
     }
+
+    // 4. Главный цикл ядра (Idle Loop)
     while (kernal_loop) {
-        Fat32_RegisterrsDisk();
-        UINT8 f = 0;
+        // Периодическое обновление дисков (если нужно)
+        // Fat32_RegisterrsDisk(); 
+
+        UINT8 active_tasks = 0;
         for (int i = 0; i < MAX_TASKS; i++) {
-            if (tasks[i].active) f++;
+            if (tasks[i].active) active_tasks++;
         }
-        if(f < 2) task_exit();
+
+        // Если осталась только одна задача (само ядро), выходим
+        if(active_tasks < 2) {
+            kernal_loop = FALSE;
+            break;
+        }
+
+        // Уступаем время другим процессам (start.pex и т.д.)
         task_yield();
     }
+    
     task_exit();
 }
 void AsciiToUnicode(const char* src, CHAR16* dest) {
@@ -349,6 +380,7 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
 
     draw_logo_from_disk('A');
     SWAP_BUFFERS();
+    INIT_PROTOCOLS();
 
     RegisterCustomHandler(0x00, CommonExceptionHandler); // Division by Zero
     RegisterCustomHandler(0x01, CommonExceptionHandler); // Debug
