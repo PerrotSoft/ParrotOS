@@ -1,15 +1,19 @@
 #include <Library/UefiBootServicesTableLib.h>
 #include "../include/interrup.h"
 
-EFI_STATUS RegisterCustomHandler (IN UINT8 Vector, IN MY_HANDLER_FUNC HandlerFunc)
+EFI_STATUS RegisterCustomHandler(IN UINT8 Vector, IN MY_HANDLER_FUNC HandlerFunc)
 {
     EFI_STATUS              Status;
     EFI_CPU_ARCH_PROTOCOL   *Cpu;
 
-    Status = gBS->LocateProtocol (&gEfiCpuArchProtocolGuid, NULL, (VOID **)&Cpu);
-    if (EFI_ERROR (Status)) return Status;
+    Status = gBS->LocateProtocol(&gEfiCpuArchProtocolGuid, NULL, (VOID **)&Cpu);
+    if (EFI_ERROR(Status)) return Status;
+    Cpu->RegisterInterruptHandler(Cpu, Vector, NULL);
+    if (HandlerFunc != NULL) {
+        return Cpu->RegisterInterruptHandler(Cpu, Vector, (EFI_CPU_INTERRUPT_HANDLER)HandlerFunc);
+    }
 
-    return Cpu->RegisterInterruptHandler (Cpu, Vector, (EFI_CPU_INTERRUPT_HANDLER)HandlerFunc);
+    return EFI_SUCCESS;
 }
 VOID TriggerInterrupt (IN UINT8 Vector, EFI_SYSTEM_CONTEXT_X64* ctx)
 {

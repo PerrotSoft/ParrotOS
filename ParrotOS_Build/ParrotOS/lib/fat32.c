@@ -453,6 +453,28 @@ const CHAR16* Disk_GetCurrentPath(VOID) {
 EFI_STATUS Disk_PathUp(VOID) {
     return FAT32_ChangeDirEx(L"..");
 }
+BOOLEAN ExistsFile(CHAR16 *filename) {
+    if (!FAT32_CWD) return FALSE;
+    EFI_FILE_PROTOCOL *f;
+    EFI_STATUS status = FAT32_CWD->Open(FAT32_CWD, &f, filename, EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(status)) return FALSE;
+    f->Close(f);
+    return TRUE;
+}
+BOOLEAN ExistsDir(CHAR16 *dirname) {
+    if (!FAT32_CWD) return FALSE;
+    EFI_FILE_PROTOCOL *f;
+    EFI_STATUS status = FAT32_CWD->Open(FAT32_CWD, &f, dirname, EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(status)) return FALSE;
+    UINTN info_size = sizeof(EFI_FILE_INFO) + 200;
+    EFI_FILE_INFO *info = AllocatePool(info_size);
+    status = f->GetInfo(f, &gEfiFileInfoGuid, &info_size, info);
+    BOOLEAN isDir = FALSE;
+    if (!EFI_ERROR(status)) isDir = (info->Attribute & EFI_FILE_DIRECTORY) != 0;
+    FreePool(info); f->Close(f);
+    return isDir;
+}
+
 VOID Fat32_Storage_INIT(VOID)
 {
     static STORAGE_DRIVER_IF Fat32Interface = {
@@ -468,7 +490,13 @@ VOID Fat32_Storage_INIT(VOID)
         .WriteFile = FAT32_WriteFile,
         .GetFileSize = FAT32_GetFileSize,
         .RegisterrsDisk = Fat32_RegisterrsDisk,
-        .ListDisks = FAT32_ListDisks
+        .ListDisks = FAT32_ListDisks,
+        .CreateDir = FAT32_CreateDir,
+        .DeleteDir = FAT32_DeleteDir,
+        .MoveFile = FAT32_MoveFile,
+        .CopyFile = FAT32_CopyFile,
+        .ExistsFile = ExistsFile,
+        .ExistsDir = ExistsDir
     };
 
     RegisterDriver(&(DRIVER){

@@ -36,7 +36,9 @@ static inline struct Process* GetCurrentCallerProcess() {
     }
     return NULL;
 }
-
+static inline BOOLEAN IFProcessHasRight(UINT8 right) {
+    return (GetCurrentCallerProcess()->Rights <= right) != 0;
+}
 static inline void RegisterTaskToProcess(INT32 tid, INT32 pid) {
     if (task_registry._push == NULL) INIT_PROTOCOLS();
     TASK_PROCESS_MAP* map = AllocateZeroPool(sizeof(TASK_PROCESS_MAP));
