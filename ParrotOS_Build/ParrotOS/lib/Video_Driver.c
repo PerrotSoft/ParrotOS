@@ -48,8 +48,26 @@ UINT32 get_pixel(INT32 x, INT32 y) {
 }
 
 void fill_rect(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 rgb24) {
-    for (INT32 i = y; i < y + h; i++)
-        for (INT32 j = x; j < x + w; j++) put_pixel(j, i, rgb24);
+    if (!back_buffer) return;
+    
+    // 1. Быстрая обрезка (Clipping)
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > (INT32)vmode.width)  w = vmode.width - x;
+    if (y + h > (INT32)vmode.height) h = vmode.height - y;
+    if (w <= 0 || h <= 0) return;
+
+    UINT32 color = convert_color(rgb24, vmode.pixel_format);
+    UINT32* line_ptr = (UINT32*)(back_buffer + (UINT64)y * vmode.pitch + (UINT64)x * 4);
+    UINTN stride = vmode.pitch / 4;
+
+    for (INT32 i = 0; i < h; i++) {
+        // Используем внутренний цикл, который компилятор может развернуть (unroll)
+        for (INT32 j = 0; j < w; j++) {
+            line_ptr[j] = color;
+        }
+        line_ptr += stride; // Переход на следующую строку
+    }
 }
 
 void draw_line(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24) {
@@ -67,20 +85,38 @@ void draw_line(INT32 x0, INT32 y0, INT32 x1, INT32 y1, UINT32 rgb24) {
 
 void clear_screen(UINT32 rgb24) {
     if (!back_buffer) return;
-    if (rgb24 == 0) { ZeroMem(back_buffer, back_buffer_size); return; }
     UINT32 color32 = convert_color(rgb24, vmode.pixel_format);
-    UINT32* dst32 = (UINT32*)back_buffer;
-    for (UINTN i = 0; i < back_buffer_size / 4; i++) dst32[i] = color32;
+    UINT64 color64 = ((UINT64)color32 << 32) | color32;
+    
+    // Безопасный расчет количества 8-байтовых блоков
+    UINTN count = back_buffer_size / 8;
+    UINT8* ptr = back_buffer;
+
+    __asm__ volatile (
+        "cld; rep stosq"
+        : "+D"(ptr), "+c"(count)
+        : "a"(color64)
+        : "memory"
+    );
+    
+    // Если остались "хвосты" (размер не кратен 8), можно дозабить их вручную,
+    // но обычно в UEFI pitch кратен 8 или 16.
+}
+
+void swap_buffers(VOID) {
+    if (back_buffer && vmode.fb) {
+        // Обычный CopyMem очень хорошо оптимизирован в UEFI (часто использует SSE)
+        CopyMem((VOID*)vmode.fb, (VOID*)back_buffer, back_buffer_size);
+        
+        // Для NVIDIA: гарантируем сброс буферов записи
+        __asm__ volatile ("sfence" ::: "memory");
+    }
 }
 
 void draw_bitmap32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 y0) {
     if (!bmp) return;
     for (INT32 y = 0; y < bmp_h; y++)
         for (INT32 x = 0; x < bmp_w; x++) put_pixel(x0 + x, y0 + y, bmp[y * bmp_w + x]);
-}
-
-void swap_buffers(VOID) {
-    if (back_buffer && vmode.fb) CopyMem((VOID*)vmode.fb, (VOID*)back_buffer, back_buffer_size);
 }
 
 void upload_shader(VOID* Code, UINTN Size, UINT64 Offset) { (VOID)Code; (VOID)Size; (VOID)Offset; }

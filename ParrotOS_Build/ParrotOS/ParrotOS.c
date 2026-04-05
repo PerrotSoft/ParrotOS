@@ -133,6 +133,7 @@ VOID EFIAPI Int24h_Graphics(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Co
             VideoMode* vm = GET_CURRENT_VMODE();
             ctx->REG_AX = (UINT64)vm->width;
             ctx->REG_BX = (UINT64)vm->height;
+            ctx->REG_CX = (UINT64)vm;
         } break;
         case 0x0A: ctx->REG_AX = (UINT64)GET_PIXEL((INT32)ctx->REG_CX, (INT32)ctx->REG_DX); break;
         case 0x0C: SWAP_BUFFERS(); break;
@@ -304,6 +305,11 @@ EFI_STATUS draw_logo_from_disk(CHAR16 DiskLetter) {
     CLEAR_SCREEN(0x000000);
     return draw_bmp_from_memory_safe((UINT8*)file.Message, file.FileSize, bmp_x, bmp_y);
 }
+static inline void wrmsr(uint32_t msr, uint64_t val) {
+    uint32_t low = (uint32_t)val;
+    uint32_t high = (uint32_t)(val >> 32);
+    __asm__ volatile("wrmsr" : : "c"(msr), "a"(low), "d"(high));
+}
 void kernal() {
     Fat32_RegisterrsDisk(); 
     INT32 tl_x = (INT32)(vmode.width / 2 - 50);
@@ -357,12 +363,28 @@ void AsciiToUnicode(const char* src, CHAR16* dest) {
     }
     *dest = L'\0'; 
 }
+void GfxEnableUltraSpeed(void) {
+    // Настраиваем IA32_PAT (MSR 0x277). 
+    // Мы меняем настройки так, чтобы индекс 1 соответствовал Write-Combining (01h)
+    uint64_t pat = 0x0007040600070106ULL; 
+
+    uint32_t low = (uint32_t)pat;
+    uint32_t high = (uint32_t)(pat >> 32);
+
+    __asm__ volatile (
+        "mov $0x277, %%rcx\n\t"
+        "wrmsr\n\t"        // Записываем новое значение PAT
+        "wbinvd"           // Сбрасываем кэши, чтобы изменения вступили в силу
+        : : "a"(low), "d"(high) : "rcx", "memory"
+    );
+}
 EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 {
     gST = SystemTable;
     gBS = SystemTable->BootServices;
     gRT = SystemTable->RuntimeServices;
     gST->BootServices->SetWatchdogTimer(0, 0, 0, NULL);
+    GfxEnableUltraSpeed();
     INIT(SystemTable);
     init_vd();
     Fat32_Storage_INIT();
