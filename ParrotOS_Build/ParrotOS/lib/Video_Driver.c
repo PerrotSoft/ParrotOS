@@ -49,8 +49,6 @@ UINT32 get_pixel(INT32 x, INT32 y) {
 
 void fill_rect(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 rgb24) {
     if (!back_buffer) return;
-    
-    // 1. Быстрая обрезка (Clipping)
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (x + w > (INT32)vmode.width)  w = vmode.width - x;
@@ -62,11 +60,10 @@ void fill_rect(INT32 x, INT32 y, INT32 w, INT32 h, UINT32 rgb24) {
     UINTN stride = vmode.pitch / 4;
 
     for (INT32 i = 0; i < h; i++) {
-        // Используем внутренний цикл, который компилятор может развернуть (unroll)
         for (INT32 j = 0; j < w; j++) {
             line_ptr[j] = color;
         }
-        line_ptr += stride; // Переход на следующую строку
+        line_ptr += stride;
     }
 }
 
@@ -88,7 +85,6 @@ void clear_screen(UINT32 rgb24) {
     UINT32 color32 = convert_color(rgb24, vmode.pixel_format);
     UINT64 color64 = ((UINT64)color32 << 32) | color32;
     
-    // Безопасный расчет количества 8-байтовых блоков
     UINTN count = back_buffer_size / 8;
     UINT8* ptr = back_buffer;
 
@@ -98,17 +94,11 @@ void clear_screen(UINT32 rgb24) {
         : "a"(color64)
         : "memory"
     );
-    
-    // Если остались "хвосты" (размер не кратен 8), можно дозабить их вручную,
-    // но обычно в UEFI pitch кратен 8 или 16.
 }
 
 void swap_buffers(VOID) {
     if (back_buffer && vmode.fb) {
-        // Обычный CopyMem очень хорошо оптимизирован в UEFI (часто использует SSE)
         CopyMem((VOID*)vmode.fb, (VOID*)back_buffer, back_buffer_size);
-        
-        // Для NVIDIA: гарантируем сброс буферов записи
         __asm__ volatile ("sfence" ::: "memory");
     }
 }
