@@ -1,17 +1,24 @@
 #!/usr/bin/env bash
 set -e
+
 SDK_DIR="$(dirname "$0")/../edk2"
 HW_DIR="$(dirname "$0")"
 DSC_FILE="$HW_DIR/Minimal.dsc"
 BUILD_FILE="$HW_DIR/build_number.txt"
 OUTPUT_DIR="$HW_DIR/out"
-EFI_SOURCE="$SDK_DIR/Build/DEBUG_GCC5/X64/ParrotOS.efi"
+EFI_SOURCE="$SDK_DIR/Build/RELEASE_GCC5/X64/ParrotOS.efi"
+
+if [ ! -f "$BUILD_FILE" ]; then
+    echo 1 > "$BUILD_FILE"
+fi
+BUILD_NUMBER=$(cat "$BUILD_FILE")
+echo "--- Сборка версии #$BUILD_NUMBER ---"
 
 mkdir -p "$OUTPUT_DIR"
 echo "--- Сборка UEFI приложения ---"
 cd "$SDK_DIR"
 source edksetup.sh
-build -a X64 -t GCC5 -p "$DSC_FILE"
+build -a X64 -t GCC5 -b RELEASE -p "$DSC_FILE" -D BUILD_VERSION=$BUILD_NUMBER
 cd "$HW_DIR"
 
 if [ ! -f "$EFI_SOURCE" ]; then
@@ -19,12 +26,11 @@ if [ ! -f "$EFI_SOURCE" ]; then
     exit 1
 fi
 
-echo "--- Создание структуры папок ---"
+echo "--- Подготовка носителей ---"
 USB_ROOT="$OUTPUT_DIR/usb_root"
 mkdir -p "$USB_ROOT/EFI/BOOT"
 cp "$EFI_SOURCE" "$USB_ROOT/EFI/BOOT/BOOTX64.EFI"
 
-echo "--- Генерация образа диска (boot.img) ---"
 IMG_FILE="$OUTPUT_DIR/boot.img"
 dd if=/dev/zero of="$IMG_FILE" bs=1M count=1
 mkfs.vfat "$IMG_FILE"
@@ -34,53 +40,20 @@ mcopy -i "$IMG_FILE" "$EFI_SOURCE" ::/EFI/BOOT/BOOTX64.EFI
 mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/ico_100x100.bmp" ::/ico_100x100.bmp
 mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/p.pex" ::/p.pex
 mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/system.ttf" ::/system.ttf
-echo "--- Генерация ISO образа ---"
-ISO_FILE="$OUTPUT_DIR/boot.iso"
-mkisofs -U -A "MyUEFI" -V "UEFI_BOOT" -J -joliet-long -r -v \
-    -eltorito-alt-boot -e EFI/BOOT/BOOTX64.EFI -no-emul-boot \
-    -o "$ISO_FILE" "$USB_ROOT"
 
+echo "--- Отправка изменений в Git ---"
+rm -f "$HW_DIR/.git/index.lock"
+
+NEXT_BUILD=$((BUILD_NUMBER + 1))
+echo $NEXT_BUILD > "$BUILD_FILE"
+
+git add .
+git commit -m "Auto-build #$BUILD_NUMBER" || echo "Нет изменений для коммита"
+
+echo "--- Запуск QEMU ---"
 qemu-system-x86_64 -hda "$IMG_FILE" -m 512M -bios /usr/share/ovmf/OVMF.fd \
   -vga std -net none -netdev user,id=net0 -device e1000,netdev=net0 \
   -usb -device usb-tablet
-echo "------------------------------------------------"
-read -p "Хотите записать проект на флешку? (y/n): " flash_yn
-if [[ $flash_yn == [Yy]* ]]; then
-    lsblk 
-    echo "ВНИМАНИЕ: Все данные на выбранном диске будут УДАЛЕНЫ!"
-    read -p "Введите имя устройства (например, sdb или sdc): " dev_name
-    
-    if [ -b "/dev/$dev_name" ]; then
-        read -p "Записать как образ (IMG) или просто скопировать файлы (файлы)? (img/file): " mode
-        if [ "$mode" == "img" ]; then
-            sudo dd if="$IMG_FILE" of="/dev/$dev_name" bs=4M status=progress
-            sync
-        else
-            echo "Для копирования файлов флешка должна быть отформатирована в FAT32."
-            read -p "Введите путь к точке монтирования флешки (например /media/user/FLASH): " mount_path
-            mkdir -p "$mount_path/EFI/BOOT"
-            cp -r "$USB_ROOT/"* "$mount_path/"
-            sync
-        fi
-        echo "Готово!"
-    else
-        echo "Устройство /dev/$dev_name не найдено."
-    fi
-fi
-echo "--- Работа с Git ---"
-read -p "Скомпилировать и сохранить в Git? (y/n): " git_yn
-if [[ $git_yn == [Yy]* ]]; then
-    if [ ! -f "$BUILD_FILE" ]; then echo 0 > "$BUILD_FILE"; fi
-    BUILD_NUM=$(($(cat "$BUILD_FILE") + 1))
-    echo $BUILD_NUM > "$BUILD_FILE"
 
-    git add .
-    read -p "Использовать авто-коммит? (y/n): " auto_git
-    if [[ $auto_git == [Yy]* ]]; then
-        git commit -m "ParrotOS Build $BUILD_NUM"
-    else
-        read -p "Введите комментарий: " comment
-        git commit -m "$comment (Build $BUILD_NUM)"
-    fi
-    git push
-fi
+echo "------------------------------------------------"
+echo "Завершено. Текущий билд: $BUILD_NUMBER. Следующий: $NEXT_BUILD"

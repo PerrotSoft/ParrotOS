@@ -185,6 +185,60 @@ EC16 ListDisks()
     STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
     return storage->ListDisks();
 }
+BOOLEAN FileExists(CHAR16 *path)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_STORAGE);
+    if (!drv || !drv->Interface)
+        return FALSE;
+
+    STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
+    return storage->ExistsFile(path);
+}
+BOOLEAN DirExists(CHAR16 *path)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_STORAGE);
+    if (!drv || !drv->Interface)
+        return FALSE;
+
+    STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
+    return storage->ExistsDir(path);
+}
+EFI_STATUS CreateDir(CHAR16 *name)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_STORAGE);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
+    return storage->CreateDir(name);
+}
+EFI_STATUS DeleteDir(CHAR16 *name)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_STORAGE);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
+    return storage->DeleteDir(name);
+}
+EFI_STATUS MoveFile(CHAR16 *src, CHAR16 *dst)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_STORAGE);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
+    return storage->MoveFile(src, dst);
+}
+EFI_STATUS CopyFile(CHAR16 *src, CHAR16 *dst)
+{
+    DRIVER* drv = GetBestDriver(DRIVER_TYPE_STORAGE);
+    if (!drv || !drv->Interface)
+        return EFI_NOT_FOUND;
+
+    STORAGE_DRIVER_IF* storage = (STORAGE_DRIVER_IF*)drv->Interface;
+    return storage->CopyFile(src, dst);
+}
 EFI_STATUS INIT_VIDEO_DRIVER(EFI_SYSTEM_TABLE *SystemTable) {
     DRIVER* drv = GetBestDriver(DRIVER_TYPE_VIDEO);
     if (!drv || !drv->Interface) return EFI_NOT_FOUND;

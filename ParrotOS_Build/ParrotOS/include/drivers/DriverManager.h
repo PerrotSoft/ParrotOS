@@ -69,6 +69,12 @@ typedef struct {
     EFI_STATUS (*GetFileSize)(CHAR16 *filename, UINT64 *filesize);
     void       (*RegisterrsDisk)();
     EC16       (*ListDisks)();
+    BOOLEAN    (*ExistsFile)(CHAR16 *path);
+    BOOLEAN    (*ExistsDir)(CHAR16 *path);
+    EFI_STATUS (*CreateDir)(CHAR16 *name);
+    EFI_STATUS (*DeleteDir)(CHAR16 *name);
+    EFI_STATUS (*MoveFile)(CHAR16 *src, CHAR16 *dst);
+    EFI_STATUS (*CopyFile)(CHAR16 *src, CHAR16 *dst);
 } STORAGE_DRIVER_IF;
 
 typedef struct {
@@ -129,6 +135,12 @@ EFI_STATUS WriteFile(CHAR16 *filename, UINT16 *data, UINTN len);
 EFI_STATUS GetFileSize(CHAR16 *filename, UINT64 *filesize);
 VOID RegisterrsDisk();
 EC16 ListDisks();
+BOOLEAN FileExists(CHAR16 *path);
+BOOLEAN DirExists(CHAR16 *path);
+EFI_STATUS CreateDir(CHAR16 *name);
+EFI_STATUS DeleteDir(CHAR16 *name);
+EFI_STATUS MoveFile(CHAR16 *src, CHAR16 *dst);
+EFI_STATUS CopyFile(CHAR16 *src, CHAR16 *dst);
 
 EFI_STATUS INIT_VIDEO_DRIVER(EFI_SYSTEM_TABLE *SystemTable);
 VOID       CLEAR_SCREEN(UINT32 rgb24);
