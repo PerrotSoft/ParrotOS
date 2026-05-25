@@ -11,13 +11,13 @@
 #include "../include/pex.h"
 
 typedef struct {
-    int32_t TaskID;    
-    int32_t ProcessID;
+    INT64 TaskID;    
+    INT64 ProcessID;
 } TASK_PROCESS_MAP;
 
 extern Vector task_registry; 
 extern Vector prs;   
-extern int32_t current_task;   
+extern INT64 current_task;   
 
 static inline void INIT_PROTOCOLS() {
     if (task_registry._push == NULL) {
@@ -27,8 +27,8 @@ static inline void INIT_PROTOCOLS() {
 
 static inline struct Process* GetCurrentCallerProcess() {
     if (task_registry._push == NULL) INIT_PROTOCOLS();
-    int32_t tid = current_task; 
-    for (uint64_t i = 0; i < task_registry._cnt(&task_registry); i++) {
+    INT64 tid = current_task; 
+    for (UINT64 i = 0; i < task_registry._cnt(&task_registry); i++) {
         TASK_PROCESS_MAP* map = (TASK_PROCESS_MAP*)task_registry._at(&task_registry, i);
         if (map != NULL && map->TaskID == tid) {
             return (struct Process*)prs.GetById(map->ProcessID);
@@ -39,7 +39,7 @@ static inline struct Process* GetCurrentCallerProcess() {
 static inline BOOLEAN IFProcessHasRight(UINT8 right) {
     return (GetCurrentCallerProcess()->Rights <= right) != 0;
 }
-static inline void RegisterTaskToProcess(INT32 tid, INT32 pid) {
+static inline void RegisterTaskToProcess(INT64 tid, INT64 pid) {
     if (task_registry._push == NULL) INIT_PROTOCOLS();
     TASK_PROCESS_MAP* map = AllocateZeroPool(sizeof(TASK_PROCESS_MAP));
     if (map == NULL) return;
@@ -48,9 +48,9 @@ static inline void RegisterTaskToProcess(INT32 tid, INT32 pid) {
     task_registry._push(&task_registry, tid, map);
 }
 
-static inline void DeRegisterTaskToProcess(INT32 tid) {
+static inline void DeRegisterTaskToProcess(INT64 tid) {
     if (task_registry._push == NULL) INIT_PROTOCOLS();
-    for (uint64_t i = 0; i < task_registry._cnt(&task_registry); i++) {
+    for (UINT64 i = 0; i < task_registry._cnt(&task_registry); i++) {
         TASK_PROCESS_MAP* map = (TASK_PROCESS_MAP*)task_registry._at(&task_registry, i);
         if (map != NULL && map->TaskID == tid) {
             FreePool(map);

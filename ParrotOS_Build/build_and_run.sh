@@ -38,7 +38,6 @@ mmd -i "$IMG_FILE" ::/EFI
 mmd -i "$IMG_FILE" ::/EFI/BOOT
 mcopy -i "$IMG_FILE" "$EFI_SOURCE" ::/EFI/BOOT/BOOTX64.EFI
 mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/ico_100x100.bmp" ::/ico_100x100.bmp
-mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/p.pex" ::/p.pex
 mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/system.ttf" ::/system.ttf
 
 echo "--- Отправка изменений в Git ---"

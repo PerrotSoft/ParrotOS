@@ -174,35 +174,34 @@ static inline CHAR16* CmdRun(CHAR16* command) {
             result = (CHAR16*)L"Error: Unable to list directory.";
         }
     }
-else if (wcscmp(argv[0], L"cat") == 0) {
-    if (argc >= 2) {
-        CHAR16* content = NULL; // Тип теперь совпадает с ожиданиями FileRead
-        uint64_t size = 0;
-        
-        // Теперь &content имеет тип CHAR16**, что и нужно функции
-        if (FileRead(argv[1], &content, &size) == 0 && size > 0) {
-            static CHAR16 cat_output[1024];
-            uint64_t bytes_to_copy = (size < 2046) ? size : 2046;
-            
-            for(uint64_t i = 0; i < bytes_to_copy; i++) {
-                ((uint8_t*)cat_output)[i] = ((uint8_t*)content)[i];
+    else if (wcscmp(argv[0], L"cat") == 0) {
+        if (argc >= 2) {
+            API_EC16 file_res = {0}; 
+
+            if (ReadFileByPath(argv[1], &file_res) == 0 && file_res.FileSize > 0) {
+                static CHAR16 cat_output[1024];
+                
+                uint64_t bytes = (file_res.FileSize < 2046) ? file_res.FileSize : 2046;
+                
+                for(uint64_t i = 0; i < bytes; i++) {
+                    ((uint8_t*)cat_output)[i] = ((uint8_t*)file_res.Message)[i];
+                }
+                
+                cat_output[bytes / 2] = 0;
+                result = cat_output;
+            } else {
+                result = (CHAR16*)L"Error: File not found or empty.";
             }
-            
-            cat_output[bytes_to_copy / 2] = 0; 
-            result = cat_output;
         } else {
-            result = (CHAR16*)L"Error: File is empty or not found.";
+            result = (CHAR16*)L"Usage: cat <filename>";
         }
-    } else {
-        result = (CHAR16*)L"Usage: cat <filename>";
     }
-}
     else if (wcscmp(argv[0], L"help") == 0) {
         result = (CHAR16*)L"Available commands:\n"
                             L"ls - List directory\n"
                             L"cat <file> - Display file contents\n"
                             L"set <var> <value> - Set variable\n"
-                            L"echo [on|off|text] - Toggle or set echo\n"
+                            L"echo [on|off|set|file|text] - Toggle or set echo\n"
                             L"screen <w> <h> - Change screen mode\n"
                             L"clear - Clear console\n"
                             L"if <a> == <b> <cmd> [else <cmd>] - Conditional execution";
@@ -216,13 +215,9 @@ else if (wcscmp(argv[0], L"cat") == 0) {
             if (wcscmp(argv[1], L"off") == 0) { echo = 0; return (CHAR16*)L""; }
             if (wcscmp(argv[1], L"on") == 0)  { echo = 1; return (CHAR16*)L"done"; }
             
-            // Запись текста в файл
-            if (wcscmp(argv[1], L"setfile") == 0 && argc >= 4) {
+            if (wcscmp(argv[1], L"set") == 0 && argc >= 4) {
                 CHAR16* fileName = argv[2];
-                // Получаем весь текст после имени файла
                 CHAR16* textToWrite = GetFullArg(GetFullArg(GetFullArg(command)));
-                
-                // Считаем размер: количество символов * 2 байта
                 uint64_t dataSize = wcslen(textToWrite) * sizeof(CHAR16);
                 
                 if (FileWrite(fileName, textToWrite, dataSize) == 0) {
@@ -231,8 +226,23 @@ else if (wcscmp(argv[0], L"cat") == 0) {
                     return (CHAR16*)L"Error: Write failed.";
                 }
             }
-            
-            // Обычный вывод текста в консоль
+            if(wcscmp(argv[1], L"file") == 0 && argc >= 3) {
+                API_EC16 file_res = {0}; 
+                if (ReadFileByPath(argv[2], &file_res) == 0 && file_res.FileSize > 0) {
+                    static CHAR16 cat_output[1024];
+                        
+                    uint64_t bytes = (file_res.FileSize < 2046) ? file_res.FileSize : 2046;
+                        
+                    for(uint64_t i = 0; i < bytes; i++) {
+                        ((uint8_t*)cat_output)[i] = ((uint8_t*)file_res.Message)[i];
+                    }
+                        
+                    cat_output[bytes / 2] = 0;
+                    result = cat_output;
+                } else {
+                    result = (CHAR16*)L"Error: File not found or empty.";
+                }
+            }
             static CHAR16 echo_buf[256];
             int pos = 0;
             for (int i = 1; i < argc; i++) {
@@ -243,6 +253,10 @@ else if (wcscmp(argv[0], L"cat") == 0) {
             echo_buf[pos] = 0;
             result = echo_buf;
         }
+    }
+    else if (wcscmp(argv[0], L"t") == 0){
+        TaskYield();
+        return (CHAR16*)L"done";
     }
     else if (wcscmp(argv[0], L"screen") == 0) {
         if (argc >= 3) {
@@ -258,6 +272,49 @@ else if (wcscmp(argv[0], L"cat") == 0) {
         }
         return (CHAR16*)L"Usage: screen <width> <height>";
     }
+    else if (wcscmp(argv[0], L"run") == 0) {
+        if (argc >= 2) {
+            struct Process process_info; 
+            
+            // Статический пул буферов для аргументов на 16 одновременных процессов.
+            // Позволяет запускать процессы без необходимости использовать malloc/AllocatePool.
+            static CHAR16 args_pool[16][256];
+            static int pool_idx = 0;
+            
+            // Берем свободный буфер для текущего процесса
+            CHAR16* internal_args = args_pool[pool_idx];
+            
+            // Сдвигаем индекс. Когда дойдет до 16, вернется к 0.
+            pool_idx = (pool_idx + 1) % 16; 
+
+            process_info.Rights = 50;
+            process_info.Name = argv[1];
+            process_info.ArgContext = (void*)internal_args;
+
+            if (argc > 2) {
+                CHAR16* args_ptr = GetFullArg(GetFullArg(command));
+                int i = 0;
+                for (; args_ptr[i] && i < 255; i++) internal_args[i] = args_ptr[i];
+                internal_args[i] = 0;
+            } else {
+                internal_args[0] = 0;
+            }
+
+            uint64_t status = PexRun(argv[1], &process_info);
+
+            if (status == 0) { // Если 0 (EFI_SUCCESS)
+                TaskYield();
+                return (CHAR16*)L"Process started successfully.";
+            } else {
+                // Никаких FreePool здесь больше не нужно
+                if (status == 14) { // EFI_NOT_FOUND
+                    return (CHAR16*)L"Error: File not found!";
+                } else {
+                    return (CHAR16*)L"Error: Could not load PEX file.";
+                }
+            }
+        }
+    } 
     else if (wcscmp(argv[0], L"clear") == 0) {
         ConsoleClear();
         RenderConsole();

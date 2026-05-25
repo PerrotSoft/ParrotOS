@@ -142,13 +142,48 @@ EFI_STATUS init_gop_driver(EFI_SYSTEM_TABLE *SystemTable) {
     vmode.back_buffer = back_buffer;
     return EFI_SUCCESS;
 }
+EFI_STATUS SetVideoMode(UINT32 Width, UINT32 Height) {
+    EFI_STATUS Status;
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *Gop;
+    EFI_GUID gopGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 
+    // 1. Получаем протокол GOP
+    Status = gBS->LocateProtocol(&gopGuid, NULL, (VOID**)&Gop);
+    if (EFI_ERROR(Status)) return Status;
+
+    // 2. Перебираем все доступные режимы
+    for (UINT32 i = 0; i < Gop->Mode->MaxMode; i++) {
+        EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;
+        UINTN SizeOfInfo;
+
+        Status = Gop->QueryMode(Gop, i, &SizeOfInfo, &Info);
+        if (EFI_ERROR(Status)) continue;
+
+        // 3. Сравниваем текущий режим с целевым
+        if (Info->HorizontalResolution == Width && Info->VerticalResolution == Height) {
+            Status = Gop->SetMode(Gop, i);
+            if (!EFI_ERROR(Status)) {
+                // Если режим успешно установлен, обновляем вашу структуру vmode
+                vmode.width = Info->HorizontalResolution;
+                vmode.height = Info->VerticalResolution;
+                vmode.pitch = Info->PixelsPerScanLine * 4;
+                vmode.fb = (volatile UINT8*)(UINTN)Gop->Mode->FrameBufferBase;
+                
+                // Примечание: тут стоит вызвать пересоздание back_buffer, 
+                // если размер изменился
+                return EFI_SUCCESS;
+            }
+        }
+    }
+
+    return EFI_UNSUPPORTED; // Режим не найден
+}
 void init_vd() {
     static VIDEO_DRIVER_IF vd_if = {
         .Init = init_gop_driver, .ClearScreen = clear_screen, .PutPixel = put_pixel,
         .DrawLine = draw_line, .DrawBitmap32 = draw_bitmap32, .GetVideoMode = get_current_vmode,
         .Get_Pixel = get_pixel, .SwapBuffers = swap_buffers, .UploadShader = upload_shader,
-        .RunCompute = run_compute, .GetDriverType = get_driver_type
+        .RunCompute = run_compute, .GetDriverType = get_driver_type, .SetVideoMode = SetVideoMode
     };
     DRIVER vd_driver = { .Type = DRIVER_TYPE_VIDEO, .Priority = 10, .Interface = (VOID*)&vd_if };
     RegisterDriver(&vd_driver);

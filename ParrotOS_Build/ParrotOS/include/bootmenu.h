@@ -109,7 +109,7 @@ void init_boot() {
         }
 
         if (ConfigWidth != 0 && ConfigHeight != 0) {
-            SetVideoMode(ConfigWidth, ConfigHeight);
+            SET_VIDEO_MODE(ConfigWidth, ConfigHeight);
             vmode.width = ConfigWidth;
             vmode.height = ConfigHeight;
         }

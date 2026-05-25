@@ -19,21 +19,24 @@ typedef struct {
 } EFI_SYSTEM_CONTEXT_X64;
 
 struct Process { 
-    int32_t ID;
+    int64_t ID;
     const CHAR16* Name;
     uint8_t Rights;
     void* ArgContext; 
     void* storage;
     uint8_t active;
-    int32_t ParentID;
+    uint64_t sizeMem;
+    int64_t ParentID;
 };
 
 void main(struct Process* pr); 
 
+// Вставь это в ParrotOS_API.h вместо старого _start
 __attribute__((used, section(".text.boot")))
 void _start(struct Process* pr) { 
     main(pr); 
-    asm volatile ("movq $0x03, %%rax; int $0x25" : : : "rax");
+    // 0x04 вызывает task_exit() и корректно очищает процесс из системы
+    asm volatile ("movq $0x04, %%rax; int $0x25" : : : "rax"); 
 }
 
 #define CHAR_BACKSPACE        0x0008
@@ -93,12 +96,37 @@ void KbdReset() { asm volatile ("movq $0x03, %%rax; int $0x22" : : : "rax"); }
 // ==========================================
 // INT 0x23: STORAGE / FS
 // ==========================================
-uint64_t FileRead(const CHAR16* path, CHAR16** out_message, uint64_t* out_size) {
+// Чтение файла по имени (относительно текущей директории)
+uint64_t ReadFile(const CHAR16* filename, CHAR16** out_message, uint64_t* out_size) {
     uint64_t r, msg, sz;
-    asm volatile ("movq $0x01, %%rax; movq %3, %%rcx; int $0x23; movq %%rax, %0; movq %%rdx, %1; movq %%r8, %2"
-                  : "=r"(r), "=r"(msg), "=r"(sz) : "r"(path) : "rax", "rcx", "rdx", "r8");
+    // Код 0x11 для ReadFile
+    asm volatile ("movq $0x11, %%rax; movq %3, %%rcx; int $0x23; movq %%rax, %0; movq %%rdx, %1; movq %%r8, %2"
+                  : "=r"(r), "=r"(msg), "=r"(sz) : "r"(filename) : "rax", "rcx", "rdx", "r8");
     if (out_message) *out_message = (CHAR16*)msg;
     if (out_size) *out_size = sz;
+    return r;
+}
+
+// Важно: эта структура в программе должна быть такой же, как в ядре!
+typedef struct {
+    uint64_t Status;
+    CHAR16* Message;
+    uint64_t FileSize;
+} API_EC16;
+
+uint64_t ReadFileByPath(const CHAR16* path, API_EC16* out_struct) {
+    uint64_t r;
+    // Передаем путь в RCX, а АДРЕС структуры в RDX
+    asm volatile (
+        "movq $0x01, %%rax; "
+        "movq %1, %%rcx; "
+        "movq %2, %%rdx; "
+        "int $0x23; "
+        "movq %%rax, %0; "
+        : "=r"(r) 
+        : "r"(path), "r"(out_struct) 
+        : "rax", "rcx", "rdx"
+    );
     return r;
 }
 uint64_t DiskSet(CHAR16 letter) { uint64_t r; asm volatile ("movq $0x02, %%rax; movq %1, %%rcx; int $0x23; movq %%rax, %0" : "=r"(r) : "r"((uint64_t)letter) : "rax", "rcx"); return r; }
