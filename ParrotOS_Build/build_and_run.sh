@@ -6,7 +6,7 @@ HW_DIR="$(dirname "$0")"
 DSC_FILE="$HW_DIR/Minimal.dsc"
 BUILD_FILE="$HW_DIR/build_number.txt"
 OUTPUT_DIR="$HW_DIR/out"
-EFI_SOURCE="$SDK_DIR/Build/RELEASE_GCC5/X64/ParrotOS.efi"
+EFI_SOURCE="$SDK_DIR/Build/DEBUG_GCC5/X64/ParrotOS.efi"
 
 if [ ! -f "$BUILD_FILE" ]; then
     echo 1 > "$BUILD_FILE"
@@ -18,7 +18,7 @@ mkdir -p "$OUTPUT_DIR"
 echo "--- Сборка UEFI приложения ---"
 cd "$SDK_DIR"
 source edksetup.sh
-build -a X64 -t GCC5 -b RELEASE -p "$DSC_FILE" -D BUILD_VERSION=$BUILD_NUMBER
+build -a X64 -t GCC5 -b DEBUG -p "$DSC_FILE" -D BUILD_VERSION=$BUILD_NUMBER
 cd "$HW_DIR"
 
 if [ ! -f "$EFI_SOURCE" ]; then
@@ -38,7 +38,6 @@ mmd -i "$IMG_FILE" ::/EFI
 mmd -i "$IMG_FILE" ::/EFI/BOOT
 mcopy -i "$IMG_FILE" "$EFI_SOURCE" ::/EFI/BOOT/BOOTX64.EFI
 mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/ico_100x100.bmp" ::/ico_100x100.bmp
-mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/p.pex" ::/p.pex
 mcopy -i "$IMG_FILE" "$HW_DIR/ParrotOS/system.ttf" ::/system.ttf
 
 echo "--- Отправка изменений в Git ---"

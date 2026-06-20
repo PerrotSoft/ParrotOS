@@ -2,7 +2,8 @@
 #include <Uefi.h>
 #include <Protocol/GraphicsOutput.h>
 #include "DriverManager.h"
-
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
 extern VideoMode vmode;
 
 EFI_STATUS init_gop_driver(EFI_SYSTEM_TABLE *SystemTable);
@@ -15,3 +16,4 @@ void draw_bitmap32(const UINT32* bmp, INT32 bmp_w, INT32 bmp_h, INT32 x0, INT32 
 VOID init_vd(VOID);
 VideoMode* get_current_vmode(VOID);
 UINT32 get_pixel(INT32 x, INT32 y);
+#pragma GCC pop_options

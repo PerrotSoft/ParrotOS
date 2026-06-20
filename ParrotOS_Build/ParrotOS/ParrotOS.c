@@ -12,6 +12,7 @@
 #include "include/task.h"
 #include "include/bmp.h"
 #include "include/pex.h"
+#include "include/bootmenu.h"
 #include "include/font.h"
 #include "include/Protocols.h"
 #include <stdbool.h>
@@ -25,9 +26,7 @@
     #define ACTUAL_BUILD STR(BUILD_VERSION)
 #endif
 extern VideoMode vmode;
-bool kernal_loop;
 CHAR16* StartFile;
-
 CHAR16* ExceptionNames[] = {
     L"0x00: Division by Zero",
     L"0x01: Debug Exception",
@@ -93,11 +92,23 @@ VOID EFIAPI Int23h_Storage(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Con
     }
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
-        case 0x01: { // ReadFile
-            EC16 f;
-            ctx->REG_AX = (UINT64)ReadFileByPath((CHAR16*)ctx->REG_CX, &f); 
-            ctx->REG_DX = (UINT64)f.Message;
-            ctx->REG_R8 = (UINT64)f.FileSize;
+        case 0x01: {
+    CHAR16* path = (CHAR16*)ctx->REG_CX;
+    EC16* user_struct = (EC16*)ctx->REG_DX;
+
+    if (user_struct == NULL) {
+        ctx->REG_AX = EFI_INVALID_PARAMETER;
+        break;
+    }
+    EFI_STATUS status = ReadFileByPath(path, user_struct);
+    ctx->REG_AX = (UINT64)status;
+} break;
+
+        case 0x11: {
+            EC16 res = ReadFile((CHAR16*)ctx->REG_CX); 
+            ctx->REG_AX = (UINT64)res.Status;
+            ctx->REG_DX = (UINT64)res.Message;
+            ctx->REG_R8 = (UINT64)res.FileSize;
         } break;
         case 0x02: ctx->REG_AX = (UINT64)SetCurrentDisk((CHAR16)ctx->REG_CX); break;
         case 0x03: ctx->REG_AX = (UINT64)WriteFile((CHAR16*)ctx->REG_CX, (UINT16*)ctx->REG_DX, (UINTN)ctx->REG_R8); break;
@@ -115,7 +126,6 @@ VOID EFIAPI Int23h_Storage(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Con
         case 0x0F: ctx->REG_AX = (UINT64)CopyFile((CHAR16*)ctx->REG_CX, (CHAR16*)ctx->REG_DX);break;
     }
 }
-
 VOID EFIAPI Int24h_Graphics(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     if(!IFProcessHasRight(200)) {
         return;
@@ -149,11 +159,11 @@ VOID EFIAPI Int25h_MultiTasking(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEX
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
         case 0x01: 
-            task_create((INT32)ctx->REG_CX, (VOID (*)(VOID))ctx->REG_DX); 
+            task_create((INT32)ctx->REG_CX, (VOID (*)(VOID))ctx->REG_DX, (UINT64)ctx->REG_R8); 
             RegisterTaskToProcess((INT32)ctx->REG_CX, GetCurrentCallerProcess()->ID); 
             break;
         case 0x02: 
-            task_create_with_arg((INT32)ctx->REG_CX, (VOID (*)(VOID*))ctx->REG_DX, (VOID*)ctx->REG_R8); 
+            task_create_with_arg((INT32)ctx->REG_CX, (VOID (*)(VOID*))ctx->REG_DX, (VOID*)ctx->REG_R8, (UINT64)ctx->REG_R9); 
             RegisterTaskToProcess((INT32)ctx->REG_CX, GetCurrentCallerProcess()->ID); 
             break;
         case 0x03: task_yield(); break;
@@ -162,11 +172,11 @@ VOID EFIAPI Int25h_MultiTasking(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEX
         case 0x06: task_start_first(); break;
         case 0x07: task_stop_and_run((INT32)ctx->REG_CX); break;
         case 0x08: task_exitx((INT32)ctx->REG_CX); DeRegisterTaskToProcess((INT32)ctx->REG_CX); break;
-        case 0x09: 
-            if (ctx->REG_DX != 0) {
-                struct Process* init_ptr = (struct Process*)ctx->REG_DX;
-                ctx->REG_AX = (UINT64)LoadAndStartPex((CHAR16*)ctx->REG_CX, *init_ptr); 
-            } break;
+        case 0x09: {
+        if (ctx->REG_DX == 0) break;
+            struct Process* init_ptr = (struct Process*)ctx->REG_DX;
+            ctx->REG_AX = (UINT64)LoadAndStartPex((CHAR16*)ctx->REG_CX, *init_ptr);
+        } break;
         case 0x0A: 
             ctx->REG_AX = (UINT64)GetCurrentCallerProcess();
             break;
@@ -295,12 +305,12 @@ VOID EFIAPI CommonExceptionHandler (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CO
     }
 }
 
-EFI_STATUS draw_logo_from_disk(CHAR16 DiskLetter) {
+EFI_STATUS draw_logo_from_disk() {
     INT32 bmp_x = (INT32)(vmode.width / 2 - 50);
     INT32 bmp_y = (INT32)(vmode.height / 2 - 50);
-    SetCurrentDisk(DiskLetter);
+    SetCurrentDisk('A');
     EC16 file;
-    EFI_STATUS status = ReadFileByPath(L"\\ico_100x100.bmp", &file);
+    EFI_STATUS status = ReadFileByPath(L"A:\\ico_100x100.bmp", &file);
     if (EFI_ERROR(status)) return status;
     CLEAR_SCREEN(0x000000);
     return draw_bmp_from_memory_safe((UINT8*)file.Message, file.FileSize, bmp_x, bmp_y);
@@ -311,50 +321,10 @@ static inline void wrmsr(uint32_t msr, uint64_t val) {
     __asm__ volatile("wrmsr" : : "c"(msr), "a"(low), "d"(high));
 }
 void kernal() {
-    Fat32_RegisterrsDisk(); 
-    INT32 tl_x = (INT32)(vmode.width / 2 - 50);
-    INT32 tl_y = (INT32)(vmode.height / 2 + 200);
-    EC16 file;
-    
-    EFI_STATUS Status = ReadFileByPath(StartFile, &file);
-
-    if (EFI_ERROR(Status) || file.Message == NULL) {
-        CHAR16 Buffer[100]; 
-        UnicodeSPrint(Buffer, sizeof(Buffer), L"[ERROR] %s not found! Status: %r", StartFile, Status);
-        font_draw_string(L"SysFont", tl_x, tl_y, 14, 0xFF0000, Buffer);
+    while (1) {
+        Fat32_RegisterrsDisk();
         task_yield(); 
-    } else {
-        gBS->FreePool(file.Message);
-        static const CHAR16* args[] = { L"0.2b", L"yka", L"posbm", NULL }; 
-        struct Process p;
-        p.Name = L"KernelInit";
-        p.ArgContext = (void*)args;
-        p.Rights = 0;
-        p.active = TRUE;
-        p.ParentID = 0;
-
-        Status = LoadAndStartPex(StartFile, p);
-        
-        if (EFI_ERROR(Status)) {
-            CHAR16 Buffer[100];
-            UnicodeSPrint(Buffer, sizeof(Buffer), L"[ERROR] Load failed! Status: %r", Status);
-            font_draw_string(L"SysFont", tl_x, tl_y, 14, 0xFF0000, Buffer);
-        }
     }
-    while (kernal_loop) {
-        Fat32_RegisterrsDisk(); 
-
-        UINT8 active_tasks = 0;
-        for (int i = 0; i < MAX_TASKS; i++) {
-            if (tasks[i].active) active_tasks++;
-        }
-        if(active_tasks < 2) {
-            kernal_loop = FALSE;
-            break;
-        }
-        task_yield();
-    }
-    
     task_exit();
 }
 void AsciiToUnicode(const char* src, CHAR16* dest) {
@@ -363,57 +333,73 @@ void AsciiToUnicode(const char* src, CHAR16* dest) {
     }
     *dest = L'\0'; 
 }
-void GfxEnableUltraSpeed(void) {
-    // Настраиваем IA32_PAT (MSR 0x277). 
-    // Мы меняем настройки так, чтобы индекс 1 соответствовал Write-Combining (01h)
-    uint64_t pat = 0x0007040600070106ULL; 
 
-    uint32_t low = (uint32_t)pat;
-    uint32_t high = (uint32_t)(pat >> 32);
 
-    __asm__ volatile (
-        "mov $0x277, %%rcx\n\t"
-        "wrmsr\n\t"        // Записываем новое значение PAT
-        "wbinvd"           // Сбрасываем кэши, чтобы изменения вступили в силу
-        : : "a"(low), "d"(high) : "rcx", "memory"
-    );
-}
+
 EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *SystemTable)
 {
     gST = SystemTable;
     gBS = SystemTable->BootServices;
     gRT = SystemTable->RuntimeServices;
     gST->BootServices->SetWatchdogTimer(0, 0, 0, NULL);
-    GfxEnableUltraSpeed();
+
+    /* ── Шаг 1: базовая инициализация ─────────────────────────────── */
     INIT(SystemTable);
-    init_vd();
+    init_vd();           
     Fat32_Storage_INIT();
     Keyboard_INIT();
     InitSimpleAudio();
     RegisterMouseDriver();
-    
     INITDRV();
+    CLEAR_SCREEN(0);
 
-    draw_logo_from_disk('A');
-    SWAP_BUFFERS();
+    CHAR16 found_disk = 0;
+    for (CHAR16 d = L'A'; d <= L'Z'; d++) {
+        EFI_STATUS ds = SetCurrentDisk(d);
+        if (EFI_ERROR(ds)) continue;
+        EC16 probe;
+        EFI_STATUS ps = ReadFileByPath(L"ico_100x100.bmp", &probe);
+        if (!EFI_ERROR(ps)) {
+            if (probe.Message) gBS->FreePool(probe.Message);
+            found_disk = d;
+            break;
+        }
+    }
+
+    if (found_disk) {
+        SetCurrentDisk(found_disk);
+        EC16 logo_file;
+        EFI_STATUS ls = ReadFileByPath(L"ico_100x100.bmp", &logo_file);
+        if (!EFI_ERROR(ls) && logo_file.Message) {
+            INT32 bmp_x = (INT32)(vmode.width  / 2 - 50);
+            INT32 bmp_y = (INT32)(vmode.height / 2 - 50);
+            draw_bmp_from_memory_safe((UINT8*)logo_file.Message, logo_file.FileSize, bmp_x, bmp_y);
+            gBS->FreePool(logo_file.Message);
+        }
+    } else {
+        for (CHAR16 d = L'A'; d <= L'Z'; d++) {
+            if (!EFI_ERROR(SetCurrentDisk(d))) { found_disk = d; break; }
+        }
+    }
+
     INIT_PROTOCOLS();
 
-    RegisterCustomHandler(0x00, CommonExceptionHandler); // Division by Zero
-    RegisterCustomHandler(0x01, CommonExceptionHandler); // Debug
-    RegisterCustomHandler(0x02, CommonExceptionHandler); // NMI
-    RegisterCustomHandler(0x03, CommonExceptionHandler); // Breakpoint
-    RegisterCustomHandler(0x04, CommonExceptionHandler); // Overflow
-    RegisterCustomHandler(0x05, CommonExceptionHandler); // Bound Range Exceeded
-    RegisterCustomHandler(0x06, CommonExceptionHandler); // Invalid Opcode
-    RegisterCustomHandler(0x07, CommonExceptionHandler); // Device Not Available
-    RegisterCustomHandler(0x08, CommonExceptionHandler); // Double Fault
-    RegisterCustomHandler(0x09, CommonExceptionHandler); // Coprocessor Segment Overrun
-    RegisterCustomHandler(0x0A, CommonExceptionHandler); // Invalid TSS
-    RegisterCustomHandler(0x0B, CommonExceptionHandler); // Segment Not Present
-    RegisterCustomHandler(0x0C, CommonExceptionHandler); // Stack-Segment Fault
-    RegisterCustomHandler(0x0D, CommonExceptionHandler); // General Protection Fault
-    RegisterCustomHandler(0x0E, CommonExceptionHandler); // Page Fault);
-    
+    RegisterCustomHandler(0x00, CommonExceptionHandler);
+    RegisterCustomHandler(0x01, CommonExceptionHandler);
+    RegisterCustomHandler(0x02, CommonExceptionHandler);
+    RegisterCustomHandler(0x03, CommonExceptionHandler);
+    RegisterCustomHandler(0x04, CommonExceptionHandler);
+    RegisterCustomHandler(0x05, CommonExceptionHandler);
+    RegisterCustomHandler(0x06, CommonExceptionHandler);
+    RegisterCustomHandler(0x07, CommonExceptionHandler);
+    RegisterCustomHandler(0x08, CommonExceptionHandler);
+    RegisterCustomHandler(0x09, CommonExceptionHandler);
+    RegisterCustomHandler(0x0A, CommonExceptionHandler);
+    RegisterCustomHandler(0x0B, CommonExceptionHandler);
+    RegisterCustomHandler(0x0C, CommonExceptionHandler);
+    RegisterCustomHandler(0x0D, CommonExceptionHandler);
+    RegisterCustomHandler(0x0E, CommonExceptionHandler);
+
     RegisterCustomHandler(0x20, Int20h_SystemTime);
     RegisterCustomHandler(0x21, Int21h_ConsoleIO);
     RegisterCustomHandler(0x22, Int22h_Keyboard);
@@ -428,31 +414,68 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
 
     init_scheduler();
     font_init();
-    
-    kernal_loop = true;
-    StartFile=L"start.pex";
-    font_load_from_disk(L"system.ttf", L"SysFont");
-    INT32 tl_x = (INT32)(vmode.width / 2 - 50);
+
+    StartFile = L"start.pex";
+
+    INT32 font_ok = font_load_from_disk(L"system.ttf", L"SysFont");
+
+    /* ── Шаг 6: рисуем заставку (только если шрифт есть) ───────────── */
+    INT32 tl_x = (INT32)(vmode.width  / 2 - 50);
     INT32 tl_y = (INT32)(vmode.height / 2 + 74);
-    font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
-    CHAR16 build_ver_unicode[128]; 
-    AsciiToUnicode(ACTUAL_BUILD, build_ver_unicode);
-    UINTN current_len = 0;
-    while (build_ver_unicode[current_len] != L'\0' && current_len < 60) {
-        current_len++;
+
+    if (font_ok >= 0) {
+        font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
+
+        CHAR16 build_ver_unicode[128];
+        AsciiToUnicode(ACTUAL_BUILD, build_ver_unicode);
+        UINTN current_len = 0;
+        while (build_ver_unicode[current_len] != L'\0' && current_len < 60) current_len++;
+        UnicodeSPrint(&build_ver_unicode[current_len],
+                      sizeof(build_ver_unicode) - (current_len * 2),
+                      L" Build    Developed by ParrotSoft");
     }
 
-    UnicodeSPrint(&build_ver_unicode[current_len], 
-                  sizeof(build_ver_unicode) - (current_len * 2), 
-                  L" Build    Developed by ParrotSoft");
+    task_create(0, kernal, 5120);
+    init_boot();
 
-    font_draw_string(L"SysFont", vmode.width - 280, vmode.height - 25, 12, 0xAAAAAA, build_ver_unicode);
-    SWAP_BUFFERS();
-    kernal_loop = true;
-    task_create(0,kernal);
-    SWAP_BUFFERS();
+    /* ── Шаг 7: загрузка start.pex ─────────────────────────────────── */
+    EC16 file;
+    EFI_STATUS Status = ReadFileByPath(StartFile, &file);
+
+    if (EFI_ERROR(Status) || file.Message == NULL) {
+
+        if (font_ok >= 0) {
+            CHAR16 Buffer[128];
+            UnicodeSPrint(Buffer, sizeof(Buffer),
+                L"BOOT ERROR: %s not found (%r)",
+                StartFile, Status);
+            font_draw_string(L"SysFont", 20, tl_y + 50, 16, 0xFF4444, Buffer);
+            font_draw_string(L"SysFont", 20, tl_y + 80, 14, 0xAAAAAA,
+                L"Check that start.pex is on the boot disk.");
+        }
+        while(1) { __asm__ volatile ("hlt"); }
+    }
+
+    gBS->FreePool(file.Message);
+
+    static const CHAR16* args[] = { L"0.2.3b", L"graphics are used", L"posk mode", NULL };
+    struct Process p;
+    p.Name       = L"KernelInit";
+    p.ArgContext = (void*)args;
+    p.Rights     = 0;
+    p.active     = TRUE;
+    p.ParentID   = 0;
+
+    Status = LoadAndStartPex(StartFile, p);
+    if (EFI_ERROR(Status)) {
+        if (font_ok >= 0) {
+            CHAR16 Buffer[128];
+            UnicodeSPrint(Buffer, sizeof(Buffer), L"LOAD ERROR: %r", Status);
+            font_draw_string(L"SysFont", 20, tl_y + 50, 16, 0xFF4444, Buffer);
+        }
+        while(1) { __asm__ volatile ("hlt"); }
+    }
     task_start_first();
-    draw_logo_from_disk('A');
-    SWAP_BUFFERS();
+
     return EFI_SUCCESS;
 }

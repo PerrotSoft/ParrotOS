@@ -24,6 +24,8 @@ typedef struct {
     UINT32 Subchunk2ID;  
     UINT32 Subchunk2Size; 
 } WAV_HEADER;
+#pragma GCC push_options
+#pragma GCC optimize ("O0")
 typedef struct {
     UINT32 width;
     UINT32 height;
@@ -33,7 +35,7 @@ typedef struct {
     UINT8* back_buffer;          
     EFI_GRAPHICS_PIXEL_FORMAT pixel_format;
 } VideoMode;
-
+#pragma GCC pop_options
 typedef struct {
     EFI_STATUS Status;
     CHAR16     *Message;
@@ -89,6 +91,7 @@ typedef struct {
     VOID       (*UploadShader)(VOID* Code, UINTN Size, UINT64 Offset);
     VOID       (*RunCompute)(UINT64 Offset, UINT32 Threads);
     const CHAR8* (*GetDriverType)(VOID);
+    EFI_STATUS (*SetVideoMode)(UINT32 Width, UINT32 Height);
 } VIDEO_DRIVER_IF;
 
 typedef struct {
@@ -153,6 +156,7 @@ VOID       SWAP_BUFFERS(VOID);
 VOID       GPU_UPLOAD_SHADER(VOID* Code, UINTN Size, UINT64 Offset);
 VOID       GPU_RUN_COMPUTE(UINT64 Offset, UINT32 Threads);
 const CHAR8* GET_VIDEO_STATUS_STR(VOID);
+EFI_STATUS SET_VIDEO_MODE(UINT32 Width, UINT32 Height);
 
 EFI_STATUS INIT_NETWORK_DRIVER(CHAR16 *NicName, CHAR16 *Password);
 EFI_STATUS NETWORK_TCP_CONNECT(CHAR16 *Ip, UINT16 Port);

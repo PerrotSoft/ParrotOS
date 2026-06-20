@@ -388,21 +388,41 @@ EFI_STATUS FAT32_AppendFile(CHAR16 *filename, UINT16 *data, UINTN len) {
 }
 
 EFI_STATUS FAT32_ReadFileByPath(CHAR16 *path_in, EC16 *out) {
-    CHAR16 pathbuf[MAX_PATH_LEN]; StrCpyS(pathbuf, MAX_PATH_LEN, path_in);
+    CHAR16 pathbuf[MAX_PATH_LEN]; 
+    StrCpyS(pathbuf, MAX_PATH_LEN, path_in);
+    
     CHAR16 diskLetter = 0; BOOLEAN isAbs = FALSE; CHAR16 *pathPart = NULL;
     FAT32_ParsePath(pathbuf, &diskLetter, &isAbs, &pathPart);
+    
     EFI_FILE_PROTOCOL *base = (diskLetter) ? FAT32_Disks[FAT32_FindDiskIndex(diskLetter)] : FAT32_CWD;
+    if (!base) return EFI_NOT_FOUND;
+
     EFI_FILE_PROTOCOL *f;
-    base->Open(base, &f, pathPart, EFI_FILE_MODE_READ, 0);
+    EFI_STATUS status = base->Open(base, &f, pathPart, EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(status)) {
+        out->Status = status;
+        out->Message = L"File not found";
+        return status;
+    }
+
     UINTN info_size = sizeof(EFI_FILE_INFO) + 512;
     EFI_FILE_INFO *info = AllocatePool(info_size);
     f->GetInfo(f, &gEfiFileInfoGuid, &info_size, info);
-    UINTN fs = (UINTN)info->FileSize; FreePool(info);
-    UINT8 *buf = AllocatePool(fs); f->Read(f, &fs, buf); f->Close(f);
-    out->Status = EFI_SUCCESS; out->Message = (CHAR16*)buf; out->FileSize = fs;
+    
+    UINTN fs = (UINTN)info->FileSize; 
+    FreePool(info);
+
+    if (fs == 0) { f->Close(f); out->FileSize = 0; return EFI_SUCCESS; }
+
+    UINT8 *buf = AllocatePool(fs); 
+    f->Read(f, &fs, buf); 
+    f->Close(f);
+
+    out->Status = EFI_SUCCESS; 
+    out->Message = (CHAR16*)buf; 
+    out->FileSize = fs;
     return EFI_SUCCESS;
 }
-
 EC16* FAT32_ListSimple(UINTN *SizeOut) {
     if (!FAT32_CWD) { *SizeOut = 0; return NULL; }
     UINTN count = 0, infoSize = sizeof(EFI_FILE_INFO) + 512;

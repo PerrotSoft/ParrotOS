@@ -9,16 +9,28 @@
 
 Vector prs;
 Vector task_registry;
+
 void ProcessManagerInit() {
     VectorInit(&prs, Min_Process);
     INIT_PROTOCOLS();
 }
 
-struct Process* GetTaskById(INT32 ID) {
+struct Process* GetTaskById(INT64 ID) {
     return (struct Process*)prs.GetById(ID);
 }
-
-void TaskStop(INT32 ID) {
+INT64* GetAllIDOfProcess(struct Process* p, UINT64* count) {
+    Vector* v = &task_registry;
+    INT64* ids = (INT64*)AllocateZeroPool(v->size * sizeof(INT64));
+    UINT64 idx = 0;
+    for (UINT64 i = 0; i < v->size; i++) {
+        if (v->items[i].data != NULL && ((INT64)v->items[i].data) == p->ID) {
+            ids[idx++] = v->items[i].id;
+        }
+    }
+    *count = idx;
+    return ids;
+}
+void ProcessStop(INT64 ID) {
     task_stop_and_run(ID);
     struct Process* p = (struct Process*)prs.GetById(ID);
     if (p != NULL) {
@@ -26,7 +38,7 @@ void TaskStop(INT32 ID) {
     }
 }
 
-UINT8 Process_Exit(INT32 ID) {
+UINT8 Process_Exit(INT64 ID) {
     struct Process* pr = GetTaskById(ID);
     if (!pr) return 0;
     task_exitx(ID);
@@ -41,13 +53,12 @@ UINT8 Process_Exit(INT32 ID) {
     return 1;
 }
 
-INT32 FindFreeTaskSlot(VOID) {
-    for (INT32 i = 1; i < MAX_TASKS; i++) {
-        if (!tasks[i].active) {
-            return i;
-        }
+INT64 FindFreeTaskSlot(VOID) {
+    static INT64 next_id = 1;
+    while (VectorGet(&task_list, next_id) != NULL) {
+        next_id++;
     }
-    return -1; 
+    return next_id++;
 }
 
 EFI_STATUS LoadAndStartPex(CHAR16* Path, struct Process init_data) {
@@ -58,7 +69,28 @@ EFI_STATUS LoadAndStartPex(CHAR16* Path, struct Process init_data) {
     if (prs._push == NULL) ProcessManagerInit();
 
     Status = ReadFileByPath(Path, &e);
-    if (EFI_ERROR(Status)) return Status;
+    if (EFI_ERROR(Status) || e.Message == NULL) return Status;
+
+    UINTN TotalSize = e.FileSize + (2 * 1024 * 1024); 
+    VOID* SafeBuffer = NULL;
+    Status = gBS->AllocatePool(EfiLoaderData, TotalSize, &SafeBuffer);
+    
+    if (EFI_ERROR(Status)) {
+        gBS->FreePool(e.Message);
+        return Status;
+    }
+
+    gBS->SetMem(SafeBuffer, TotalSize, 0);
+    gBS->CopyMem(SafeBuffer, e.Message, e.FileSize);
+    gBS->FreePool(e.Message); // Удаляем старый маленький буфер
+    e.Message = SafeBuffer;   // Теперь работаем с безопасным буфером
+
+    PEX_HEADER* header = (PEX_HEADER*)e.Message;
+
+    if (header->Magic[0] != 'P' || header->Magic[1] != 'E' || header->Magic[2] != 'X') {
+        gBS->FreePool(e.Message);
+        return EFI_UNSUPPORTED; 
+    }
 
     Status = gBS->AllocatePool(EfiLoaderData, sizeof(struct Process), (VOID**)&pr);
     if (EFI_ERROR(Status)) {
@@ -86,11 +118,16 @@ EFI_STATUS LoadAndStartPex(CHAR16* Path, struct Process init_data) {
         pr->ParentID = 0;
     }
 
+    if (pr->sizeMem == 0) {
+        pr->sizeMem = (header->MemorySizeMB > 0) ? (header->MemorySizeMB * 1024 * 1024) : (2 * 1024 * 1024); 
+    }
+
     RegisterTaskToProcess(id, pr->ID);
     prs.Push(id, pr);
 
-    Status = task_create_with_arg(id, (VOID (*)(VOID*))e.Message, pr);
-    
+    VOID (*entry_point)(VOID*) = (VOID (*)(VOID*))((UINTN)e.Message + header->EntryPoint);
+
+    Status = task_create_with_arg(id, entry_point, pr, (UINT64)pr->sizeMem);
     if (EFI_ERROR(Status)) {
         Process_Exit(id);
         return Status;

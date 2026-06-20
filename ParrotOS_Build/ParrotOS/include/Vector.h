@@ -127,5 +127,16 @@ static inline void VectorInit(Vector* v, uint64_t initial_capacity) {
     v->_cnt  = _v_cnt_impl;
     v->_clr  = _v_clr_impl;
 }
+// Используем реальные имена полей из структуры Vector (_push, _get и т.д.)
+#undef VectorPush
+#undef VectorGet
+#undef VectorSet
+#undef VectorRemove
+#undef VectorCount
 
+#define VectorPush(v, id, data) (v)->_push(v, id, data)
+#define VectorGet(v, id)        (v)->_get(v, id)
+#define VectorSet(v, id, data)  (v)->_set(v, id, data)
+#define VectorRemove(v, id)     (v)->_rem(v, id)
+#define VectorCount(v)          (v)->_cnt(v)
 #endif
