@@ -62,7 +62,7 @@ typedef struct {
     EFI_STATUS (*SetCurrentDisk)(CHAR16 Letter);
     const CHAR16* (*GetCurrentPath)(VOID);
     EFI_STATUS (*PathUp)(VOID);
-    EC16 (*ListDir)(VOID);
+    EC16 (*ListDir)(CHAR16 *path);
     EFI_STATUS (*ChangeDir)(CHAR16 *path);
     EFI_STATUS (*CreateFile)(CHAR16 *name);
     EFI_STATUS (*DeleteFile)(CHAR16 *name);
@@ -129,7 +129,7 @@ EFI_STATUS ReadFileByPath(CHAR16 *path_in, EC16 *out);
 EFI_STATUS SetCurrentDisk(CHAR16 Letter);
 const CHAR16* GetCurrentPath(VOID);
 EFI_STATUS PathUp(VOID);
-EC16 ListDir(VOID);
+EC16 ListDir(CHAR16 *path);
 EFI_STATUS ChangeDir(CHAR16 *path);
 EFI_STATUS CreateFile(CHAR16 *name);
 EFI_STATUS DeleteFile(CHAR16 *name);

@@ -167,18 +167,24 @@ static inline CHAR16* CmdRun(CHAR16* command) {
     }
     
     if (wcscmp(argv[0], L"ls") == 0) {
-        CHAR16* listing = FsListDir();
+        CHAR16* listing = NULL; 
+        if (argc >= 2) {
+            listing = FsListDir(argv[1]);
+        }else {
+            listing = FsListDir((CHAR16*)L".");
+        }
         if (listing) {
             result = listing;
         } else {
             result = (CHAR16*)L"Error: Unable to list directory.";
         }
+
     }
     else if (wcscmp(argv[0], L"cat") == 0) {
         if (argc >= 2) {
-            API_EC16 file_res = {0}; 
+            EC16 file_res = {0}; 
 
-            if (ReadFileByPath(argv[1], &file_res) == 0 && file_res.FileSize > 0) {
+            if (FsReadFileByPath(argv[1], &file_res) == 0 && file_res.FileSize > 0) {
                 static CHAR16 cat_output[1024];
                 
                 uint64_t bytes = (file_res.FileSize < 2046) ? file_res.FileSize : 2046;
@@ -198,12 +204,24 @@ static inline CHAR16* CmdRun(CHAR16* command) {
     }
     else if (wcscmp(argv[0], L"help") == 0) {
         result = (CHAR16*)L"Available commands:\n"
+                            L"help - Show this help message\n"
                             L"ls - List directory\n"
                             L"cat <file> - Display file contents\n"
                             L"set <var> <value> - Set variable\n"
                             L"echo [on|off|set|file|text] - Toggle or set echo\n"
                             L"screen <w> <h> - Change screen mode\n"
+                            L"run <exe> [args] - Run process with user rights\n"
+                            L"runr <exe> [args] - Run process with reduced rights\n"
+                            L"runsys <exe> [args] - Run system process\n"
+                            L"mkdir <directory_name> - Create directory\n"
+                            L"rm <file_or_directory> - Delete file or directory\n"
+                            L"rmd <directory_name> - Delete empty directory\n"
                             L"clear - Clear console\n"
+                            L"shutdown - Power off system\n"
+                            L"reboot - Reboot system\n"
+                            L"cdd <directory_name> - Change current disk\n"
+                            L"disks - List available disks\n"
+                            L"sysver - Show system version\n"
                             L"if <a> == <b> <cmd> [else <cmd>] - Conditional execution";
     }
     else if (wcscmp(argv[0], L"set") == 0) {
@@ -220,15 +238,15 @@ static inline CHAR16* CmdRun(CHAR16* command) {
                 CHAR16* textToWrite = GetFullArg(GetFullArg(GetFullArg(command)));
                 uint64_t dataSize = wcslen(textToWrite) * sizeof(CHAR16);
                 
-                if (FileWrite(fileName, textToWrite, dataSize) == 0) {
+                if (FsWriteFile(fileName, textToWrite, dataSize) == 0) {
                     return (CHAR16*)L"File saved.";
                 } else {
                     return (CHAR16*)L"Error: Write failed.";
                 }
             }
             if(wcscmp(argv[1], L"file") == 0 && argc >= 3) {
-                API_EC16 file_res = {0}; 
-                if (ReadFileByPath(argv[2], &file_res) == 0 && file_res.FileSize > 0) {
+                EC16 file_res = {0}; 
+                if (FsReadFileByPath(argv[2], &file_res) == 0 && file_res.FileSize > 0) {
                     static CHAR16 cat_output[1024];
                         
                     uint64_t bytes = (file_res.FileSize < 2046) ? file_res.FileSize : 2046;
@@ -392,7 +410,7 @@ static inline CHAR16* CmdRun(CHAR16* command) {
     }
     else if (wcscmp(argv[0], L"rm") == 0) {
         if (argc >= 2) {
-            if (FileDelete(argv[1]) == 0) {
+            if (FsDeleteFile(argv[1]) == 0) {
                 return (CHAR16*)L"Deleted successfully.";
             } else {
                 return (CHAR16*)L"Error: Could not delete file";
@@ -403,7 +421,7 @@ static inline CHAR16* CmdRun(CHAR16* command) {
     }
     else if (wcscmp(argv[0], L"rmd") == 0) {
         if (argc >= 2) {
-            if (FileDelete(argv[1]) == 0) {
+            if (FsDeleteFile(argv[1]) == 0) {
                 return (CHAR16*)L"Directory deleted successfully.";
             } else {
                 return (CHAR16*)L"Error: Could not delete directory";
@@ -424,6 +442,25 @@ static inline CHAR16* CmdRun(CHAR16* command) {
     else if (wcscmp(argv[0], L"reboot") == 0) {
         SysReboot();
         return (CHAR16*)L"Rebooting...";
+    }
+    else if (wcscmp(argv[0], L"cdd") == 0) {
+        if (argc >= 2) {
+            if (FsSetCurrentDisk(argv[1]) == 0) {
+                return (CHAR16*)L"Current disk set.";
+            } else {
+                return (CHAR16*)L"Error: Could not set current disk.";
+            }
+        } else {
+            return (CHAR16*)L"Usage: cdd <directory_name>";
+        }
+    }
+    else if (wcscmp(argv[0], L"disks") == 0) {
+        CHAR16* disks = FsListDisks();
+        if (disks) {
+            result = disks;
+        } else {
+            result = (CHAR16*)L"Error: Unable to list disks.";
+        }
     }
     else if (wcscmp(argv[0], L"sysver") == 0) {
         return (CHAR16*)L"System Version: PS-Dos beta 1.0.0\nKernel: POSK - ParrotOS Kernel\nPOSK: beta 2.5";

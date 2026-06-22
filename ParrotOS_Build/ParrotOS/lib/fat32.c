@@ -254,11 +254,11 @@ EFI_STATUS FAT32_ChangeDirEx(CHAR16 *inputPath) {
     return EFI_SUCCESS;
 }
 
-EC16 FAT32_ListDir(VOID) {
+EC16 FAT32_ListDir(CHAR16 *path) {
     EC16 result; result.Status = EFI_SUCCESS; result.Message = NULL;
     if (!FAT32_CWD) { result.Status = EFI_NOT_READY; return result; }
     EFI_FILE_PROTOCOL *dir;
-    EFI_STATUS status = FAT32_CWD->Open(FAT32_CWD, &dir, L".", EFI_FILE_MODE_READ, EFI_FILE_DIRECTORY);
+    EFI_STATUS status = FAT32_CWD->Open(FAT32_CWD, &dir, path, EFI_FILE_MODE_READ, EFI_FILE_DIRECTORY);
     if (EFI_ERROR(status)) { result.Status = status; return result; }
     UINTN buf_size = sizeof(EFI_FILE_INFO) + 512;
     EFI_FILE_INFO *info = AllocatePool(buf_size);

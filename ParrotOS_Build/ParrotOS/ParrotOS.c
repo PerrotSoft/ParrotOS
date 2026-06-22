@@ -19,7 +19,7 @@
 #include <Library/PrintLib.h>
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
-
+ #define Version "2.5.0"
 #ifndef BUILD_VERSION
     #define ACTUAL_BUILD "0"
 #else
@@ -44,30 +44,41 @@ CHAR16* ExceptionNames[] = {
     L"0x0D: General Protection Fault",
     L"0x0E: Page Fault"
 };
+UINT64 GetInternalTicks(void)
+{
+    EFI_TIME Time;
 
+    if (EFI_ERROR(gRT->GetTime(&Time, NULL)))
+        return 0;
+
+    return
+        (UINT64)Time.Hour * 3600 +
+        (UINT64)Time.Minute * 60 +
+        (UINT64)Time.Second;
+}
 VOID INITDRV(){
     INIT_VIDEO_DRIVER(gST);
     INIT_MOUSE();
     RegisterrsDisk(); 
 }
+// =====================================================================
+// ПРЕРЫВАНИЕ 0x20: СИСТЕМНОЕ ВРЕМЯ И ИНФОРМАЦИЯ
+// =====================================================================
 VOID EFIAPI Int20h_SystemTime(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
-        case 0x01:
-            //ctx->REG_AX = GetInternalTicks(); 
-            break;
-        case 0x02: 
-            gBS->Stall((UINTN)ctx->REG_CX * 1000);
-            break;
-        case 0x03: 
-            ctx->REG_AX = (UINT64)ACTUAL_BUILD;
-            break;
+        case 0x01: ctx->REG_AX = GetInternalTicks(); break;
+        case 0x02: gBS->Stall((UINTN)ctx->REG_CX * 1000); break;
+        case 0x03: ctx->REG_AX = (UINT64)ACTUAL_BUILD; break;
+        case 0x04: ctx->REG_AX = (UINT64)Version; break;
     }
 }
+
+// =====================================================================
+// ПРЕРЫВАНИЕ 0x21: ВВОД/ВЫВОД КОНСОЛИ
+// =====================================================================
 VOID EFIAPI Int21h_ConsoleIO(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(60)) {
-        return;
-    }
+    if (!IFProcessHasRight(60)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
         case 0x01: Print(L"%c", (CHAR16)ctx->REG_CX); break;
@@ -78,6 +89,10 @@ VOID EFIAPI Int21h_ConsoleIO(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT C
         case 0x07: gST->ConOut->EnableCursor(gST->ConOut, (BOOLEAN)ctx->REG_CX); break;
     }
 }
+
+// =====================================================================
+// ПРЕРЫВАНИЕ 0x22: КЛАВИАТУРА
+// =====================================================================
 VOID EFIAPI Int22h_Keyboard(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
@@ -86,50 +101,54 @@ VOID EFIAPI Int22h_Keyboard(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Co
         case 0x03: Reset(); break;
     }
 }
+
+// =====================================================================
+// ПРЕРЫВАНИЕ 0x23: ФАЙЛОВАЯ СИСТЕМА (STORAGE)
+// =====================================================================
 VOID EFIAPI Int23h_Storage(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(200)) {
-        return;
-    }
+    if (!IFProcessHasRight(200)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
         case 0x01: {
-    CHAR16* path = (CHAR16*)ctx->REG_CX;
-    EC16* user_struct = (EC16*)ctx->REG_DX;
-
-    if (user_struct == NULL) {
-        ctx->REG_AX = EFI_INVALID_PARAMETER;
-        break;
-    }
-    EFI_STATUS status = ReadFileByPath(path, user_struct);
-    ctx->REG_AX = (UINT64)status;
-} break;
-
-        case 0x11: {
-            EC16 res = ReadFile((CHAR16*)ctx->REG_CX); 
-            ctx->REG_AX = (UINT64)res.Status;
-            ctx->REG_DX = (UINT64)res.Message;
-            ctx->REG_R8 = (UINT64)res.FileSize;
+            CHAR16* path = (CHAR16*)ctx->REG_CX;
+            EC16* user_struct = (EC16*)ctx->REG_DX;
+            if (!path || !user_struct) { ctx->REG_AX = EFI_INVALID_PARAMETER; break; }
+            ctx->REG_AX = (UINT64)ReadFileByPath(path, user_struct);
         } break;
         case 0x02: ctx->REG_AX = (UINT64)SetCurrentDisk((CHAR16)ctx->REG_CX); break;
-        case 0x03: ctx->REG_AX = (UINT64)WriteFile((CHAR16*)ctx->REG_CX, (UINT16*)ctx->REG_DX, (UINTN)ctx->REG_R8); break;
-        case 0x04: ctx->REG_AX = (UINT64)CreateFile((CHAR16*)ctx->REG_CX); break;
-        case 0x05: ctx->REG_AX = (UINT64)DeleteFile((CHAR16*)ctx->REG_CX); break;
-        case 0x06: ctx->REG_AX = (UINT64)GetFileSize((CHAR16*)ctx->REG_CX, (UINT64*)ctx->REG_DX); break;
-        case 0x07: ctx->REG_AX = (UINT64)ChangeDir((CHAR16*)ctx->REG_CX); break;
-        case 0x08: ctx->REG_AX = (UINT64)(ListDir().Message); break; 
+        case 0x03: {
+            CHAR16* fname = (CHAR16*)ctx->REG_CX;
+            if (!fname) { ctx->REG_AX = EFI_INVALID_PARAMETER; break; }
+            ctx->REG_AX = (UINT64)WriteFile(fname, (UINT16*)ctx->REG_DX, (UINTN)ctx->REG_R8);
+        } break;
+        case 0x04: ctx->REG_AX = ctx->REG_CX ? (UINT64)CreateFile((CHAR16*)ctx->REG_CX) : EFI_INVALID_PARAMETER; break;
+        case 0x05: ctx->REG_AX = ctx->REG_CX ? (UINT64)DeleteFile((CHAR16*)ctx->REG_CX) : EFI_INVALID_PARAMETER; break;
+        case 0x06: ctx->REG_AX = (ctx->REG_CX && ctx->REG_DX) ? (UINT64)GetFileSize((CHAR16*)ctx->REG_CX, (UINT64*)ctx->REG_DX) : EFI_INVALID_PARAMETER; break;
+        case 0x07: ctx->REG_AX = ctx->REG_CX ? (UINT64)ChangeDir((CHAR16*)ctx->REG_CX) : EFI_INVALID_PARAMETER; break;
+        case 0x08: ctx->REG_AX = (UINT64)(ListDir((CHAR16*)ctx->REG_CX).Message); break; 
         case 0x09: ctx->REG_AX = (UINT64)(ListDisks().Message); break;
-        case 0x0A: ctx->REG_AX = (UINT64)FileExists((CHAR16*)ctx->REG_CX); break;
-        case 0x0B: ctx->REG_AX = (UINT64)DirExists((CHAR16*)ctx->REG_CX);break;
-        case 0x0C: ctx->REG_AX = (UINT64)CreateDir((CHAR16*)ctx->REG_CX);break;
-        case 0x0D: ctx->REG_AX = (UINT64)DeleteDir((CHAR16*)ctx->REG_CX);break;
-        case 0x0E: ctx->REG_AX = (UINT64)MoveFile((CHAR16*)ctx->REG_CX, (CHAR16*)ctx->REG_DX);break;
-        case 0x0F: ctx->REG_AX = (UINT64)CopyFile((CHAR16*)ctx->REG_CX, (CHAR16*)ctx->REG_DX);break;
+        case 0x0A: ctx->REG_AX = ctx->REG_CX ? (UINT64)FileExists((CHAR16*)ctx->REG_CX) : FALSE; break;
+        case 0x0B: ctx->REG_AX = ctx->REG_CX ? (UINT64)DirExists((CHAR16*)ctx->REG_CX)  : FALSE; break;
+        case 0x0C: ctx->REG_AX = ctx->REG_CX ? (UINT64)CreateDir((CHAR16*)ctx->REG_CX)  : EFI_INVALID_PARAMETER; break;
+        case 0x0D: ctx->REG_AX = ctx->REG_CX ? (UINT64)DeleteDir((CHAR16*)ctx->REG_CX)  : EFI_INVALID_PARAMETER; break;
+        case 0x0E: ctx->REG_AX = (ctx->REG_CX && ctx->REG_DX) ? (UINT64)MoveFile((CHAR16*)ctx->REG_CX, (CHAR16*)ctx->REG_DX) : EFI_INVALID_PARAMETER; break;
+        case 0x0F: ctx->REG_AX = (ctx->REG_CX && ctx->REG_DX) ? (UINT64)CopyFile((CHAR16*)ctx->REG_CX, (CHAR16*)ctx->REG_DX) : EFI_INVALID_PARAMETER; break;
+        case 0x11: {
+            if (!ctx->REG_CX) { ctx->REG_AX = EFI_INVALID_PARAMETER; break; }
+            EC16 res = ReadFile((CHAR16*)ctx->REG_CX);
+            ctx->REG_AX = res.Status; ctx->REG_DX = (UINT64)res.Message; ctx->REG_R8 = (UINT64)res.FileSize;
+        } break;
+        case 0x12: ctx->REG_AX = (UINT64)GetCurrentPath(); break;
+        case 0x13: ctx->REG_AX = (UINT64)PathUp(); break;
+        case 0x14: RegisterrsDisk(); ctx->REG_AX = EFI_SUCCESS; break;
     }
 }
+
+// =====================================================================
+// ПРЕРЫВАНИЕ 0x24: ГРАФИКА
+// =====================================================================
 VOID EFIAPI Int24h_Graphics(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(200)) {
-        return;
-    }
+    if (!IFProcessHasRight(200)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
         case 0x01: CLEAR_SCREEN((UINT32)ctx->REG_CX); break;
@@ -139,78 +158,60 @@ VOID EFIAPI Int24h_Graphics(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Co
         case 0x05: ctx->REG_AX = (UINT64)font_load_from_disk((CHAR16*)ctx->REG_CX, (const CHAR16*)ctx->REG_DX); break;
         case 0x06: font_draw_char((const CHAR16*)ctx->REG_CX, (INT32)ctx->REG_DX, (INT32)ctx->REG_R8, (INT32)ctx->REG_R9, (UINT32)ctx->REG_R10, (CHAR16)ctx->REG_R11); break;
         case 0x08: font_draw_string((const CHAR16*)ctx->REG_CX, (INT32)ctx->REG_DX, (INT32)ctx->REG_R8, (INT32)ctx->REG_R9, (UINT32)ctx->REG_R10, (const CHAR16*)ctx->REG_R11); break;
-        case 0x09: {
-            VideoMode* vm = GET_CURRENT_VMODE();
-            ctx->REG_AX = (UINT64)vm->width;
-            ctx->REG_BX = (UINT64)vm->height;
-            ctx->REG_CX = (UINT64)vm;
-        } break;
+        case 0x09: { VideoMode* vm = GET_CURRENT_VMODE(); ctx->REG_AX = vm->width; ctx->REG_BX = vm->height; ctx->REG_CX = (UINT64)vm; } break;
         case 0x0A: ctx->REG_AX = (UINT64)GET_PIXEL((INT32)ctx->REG_CX, (INT32)ctx->REG_DX); break;
         case 0x0C: SWAP_BUFFERS(); break;
         case 0x0D: GPU_UPLOAD_SHADER((VOID*)ctx->REG_CX, (UINTN)ctx->REG_DX, ctx->REG_R8); break;
         case 0x0E: GPU_RUN_COMPUTE(ctx->REG_CX, (UINT32)ctx->REG_DX); break;
         case 0x0F: ctx->REG_AX = (UINT64)GET_VIDEO_STATUS_STR(); break;
+        case 0x10: ctx->REG_AX = (UINT64)SET_VIDEO_MODE((UINT32)ctx->REG_CX, (UINT32)ctx->REG_DX); break;
+        case 0x11:ctx->REG_AX = (UINT64)draw_bmp_from_memory_safe((UINT8*)ctx->Rcx, (UINTN)ctx->Rdx, (INT32)ctx->R8, (INT32)ctx->R9);break;
     }
 }
+
+// =====================================================================
+// ПРЕРЫВАНИЕ 0x25: МНОГОЗАДАЧНОСТЬ (МЕНЕДЖЕР ПРОЦЕССОВ)
+// =====================================================================
 VOID EFIAPI Int25h_MultiTasking(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(210)) {
-        return;
-    }
+    if (!IFProcessHasRight(210)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
-        case 0x01: 
-            task_create((INT32)ctx->REG_CX, (VOID (*)(VOID))ctx->REG_DX, (UINT64)ctx->REG_R8); 
-            RegisterTaskToProcess((INT32)ctx->REG_CX, GetCurrentCallerProcess()->ID); 
-            break;
-        case 0x02: 
-            task_create_with_arg((INT32)ctx->REG_CX, (VOID (*)(VOID*))ctx->REG_DX, (VOID*)ctx->REG_R8, (UINT64)ctx->REG_R9); 
-            RegisterTaskToProcess((INT32)ctx->REG_CX, GetCurrentCallerProcess()->ID); 
-            break;
+        case 0x01: task_create((INT32)ctx->REG_CX, (VOID (*)(VOID))ctx->REG_DX, (UINT64)ctx->REG_R8); RegisterTaskToProcess((INT32)ctx->REG_CX, GetCurrentCallerProcess()->ID); break;
+        case 0x02: task_create_with_arg((INT32)ctx->REG_CX, (VOID (*)(VOID*))ctx->REG_DX, (VOID*)ctx->REG_R8, (UINT64)ctx->REG_R9); RegisterTaskToProcess((INT32)ctx->REG_CX, GetCurrentCallerProcess()->ID); break;
         case 0x03: task_yield(); break;
         case 0x04: task_exit(); DeRegisterTaskToProcess(current_task); break;
         case 0x05: ctx->REG_AX = (UINT64)current_task; break;
         case 0x06: task_start_first(); break;
         case 0x07: task_stop_and_run((INT32)ctx->REG_CX); break;
         case 0x08: task_exitx((INT32)ctx->REG_CX); DeRegisterTaskToProcess((INT32)ctx->REG_CX); break;
-        case 0x09: {
-        if (ctx->REG_DX == 0) break;
-            struct Process* init_ptr = (struct Process*)ctx->REG_DX;
-            ctx->REG_AX = (UINT64)LoadAndStartPex((CHAR16*)ctx->REG_CX, *init_ptr);
-        } break;
-        case 0x0A: 
-            ctx->REG_AX = (UINT64)GetCurrentCallerProcess();
-            break;
-        case 0x0B:
-            ctx->REG_AX = (UINT64)Process_Exit((INT32)ctx->REG_CX);
-            break;
-        case 0x0c:
-            ctx->REG_AX = (UINT64)GetTaskById((INT32)ctx->REG_CX);
-            break;
+        case 0x09: if (ctx->REG_DX) { ctx->REG_AX = (UINT64)LoadAndStartPex((CHAR16*)ctx->REG_CX, *(struct Process*)ctx->REG_DX); } break;
+        case 0x0A: ctx->REG_AX = (UINT64)GetCurrentCallerProcess(); break;
+        case 0x0B: ctx->REG_AX = (UINT64)Process_Exit((INT32)ctx->REG_CX); break;
+        case 0x0C: ctx->REG_AX = (UINT64)GetTaskById((INT32)ctx->REG_CX); break;
     }
 }
+
+// =====================================================================
+// ПРЕРЫВАНИЕ 0x26: СЛУЖБЫ ЯДРА
+// =====================================================================
 VOID EFIAPI Int26h_KernelService(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(50)) {
-        return;
-    }
+    if (!IFProcessHasRight(50)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
-        case 0x01: 
-            if (ctx->REG_BX <= 0xFF) RegisterCustomHandler((UINT8)ctx->REG_BX, (MY_HANDLER_FUNC)ctx->REG_CX);
-            break;
+        case 0x01: if (ctx->REG_BX <= 0xFF) RegisterCustomHandler((UINT8)ctx->REG_BX, (MY_HANDLER_FUNC)ctx->REG_CX); break;
         case 0x02: ctx->REG_AX = (UINT64)RegisterDriver((DRIVER*)ctx->REG_CX); break;
-        case 0x03: 
-            ctx->REG_CX = (UINT64)gImageHandle;
-            ctx->REG_DX = (UINT64)gST;
-            break;
+        case 0x03: ctx->REG_CX = (UINT64)gImageHandle; ctx->REG_DX = (UINT64)gST; break;
         case 0x04: gRT->ResetSystem(EfiResetWarm, EFI_SUCCESS, 0, NULL); break;
         case 0x05: gRT->ResetSystem(EfiResetShutdown, EFI_SUCCESS, 0, NULL); break;
         case 0x06: INITDRV(); break;
     }
 }
+
+// =====================================================================
+// ПРЕРЫВАНИЯ 0x27-0x2A: СЕТЬ, АУДИО, МЫШЬ И ПАМЯТЬ
+// =====================================================================
 VOID EFIAPI Int27h_Network(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(200)) {
-        return;
-    }
+    if (!IFProcessHasRight(200)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
         case 0x01: ctx->REG_AX = (UINT64)INIT_NETWORK_DRIVER((CHAR16*)ctx->REG_CX, (CHAR16*)ctx->REG_DX); break;
@@ -221,41 +222,34 @@ VOID EFIAPI Int27h_Network(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Con
         case 0x06: ctx->REG_AX = (UINT64)NETWORK_DNS_LOOKUP((CHAR16*)ctx->REG_CX, (CHAR16*)ctx->REG_DX); break;
     }
 }
+
 VOID EFIAPI Int28h_Audio(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(200)) {
-        return;
-    }
+    if (!IFProcessHasRight(200)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
         case 0x01: AudioBeep((UINT32)ctx->REG_CX, (UINT32)ctx->REG_DX); break;
         case 0x02: ctx->REG_AX = (UINT64)AudioPlay((UINT8*)ctx->REG_CX, (UINTN)ctx->REG_DX); break;
     }
 }
+
 VOID EFIAPI Int29h_Mouse(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(200)) {
-        return;
-    }
+    if (!IFProcessHasRight(200)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
         case 0x01: ctx->REG_AX = (UINT64)INIT_MOUSE(); break;
         case 0x02: ctx->REG_AX = (UINT64)GET_MOUSE_STATE((INT32*)ctx->REG_CX, (INT32*)ctx->REG_DX, (BOOLEAN*)ctx->REG_R8, (BOOLEAN*)ctx->REG_R9); break;
     }
 }
+
 VOID EFIAPI Int2Ah_Memory(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
-    if(!IFProcessHasRight(205)) {
-        return;
-    }
+    if (!IFProcessHasRight(205)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
-        case 0x01:
-            {
-                VOID* ptr = NULL;
-                EFI_STATUS s = gBS->AllocatePool(EfiLoaderData, (UINTN)ctx->REG_CX, &ptr);
-                ctx->REG_AX = (s == EFI_SUCCESS) ? (UINT64)ptr : 0;
-            } break;
-        case 0x02: // Free Pool
-            if (ctx->REG_CX != 0) gBS->FreePool((VOID*)ctx->REG_CX);
-            break;
+        case 0x01: {
+            VOID* ptr = NULL;
+            ctx->REG_AX = (gBS->AllocatePool(EfiLoaderData, (UINTN)ctx->REG_CX, &ptr) == EFI_SUCCESS) ? (UINT64)ptr : 0;
+        } break;
+        case 0x02: if (ctx->REG_CX) gBS->FreePool((VOID*)ctx->REG_CX); break;
     }
 }
 VOID KernelPanic(const CHAR16* message, EFI_SYSTEM_CONTEXT Context, UINT64 ErrorCode) {
@@ -285,14 +279,15 @@ VOID KernelPanic(const CHAR16* message, EFI_SYSTEM_CONTEXT Context, UINT64 Error
     
     font_draw_string(L"SysFont", margin_x, footer_y + 40, 14, 0xEEEEEE, L"Stop Code: ");
     font_draw_string(L"SysFont", margin_x + 110, footer_y + 40, 14, 0xFFFFFF, message);
-
+    SWAP_BUFFERS();
     if (ctx) {
         font_draw_string(L"SysFont", margin_x, footer_y + 70, 12, 0xAAAAAA, L"RIP: ");
     }
 
     font_draw_string(L"SysFont", margin_x, screen_h - 40, 12, 0x888888, 
         L"System will automatically reboot in 60 seconds.");
-
+    CLEAR_SCREEN(0x0000AA); 
+    SWAP_BUFFERS();
     while(TRUE) {
         __asm__ ("hlt");
     }
@@ -312,7 +307,6 @@ EFI_STATUS draw_logo_from_disk() {
     EC16 file;
     EFI_STATUS status = ReadFileByPath(L"A:\\ico_100x100.bmp", &file);
     if (EFI_ERROR(status)) return status;
-    CLEAR_SCREEN(0x000000);
     return draw_bmp_from_memory_safe((UINT8*)file.Message, file.FileSize, bmp_x, bmp_y);
 }
 static inline void wrmsr(uint32_t msr, uint64_t val) {
@@ -365,7 +359,7 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
             break;
         }
     }
-
+SWAP_BUFFERS();
     if (found_disk) {
         SetCurrentDisk(found_disk);
         EC16 logo_file;
@@ -375,13 +369,14 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
             INT32 bmp_y = (INT32)(vmode.height / 2 - 50);
             draw_bmp_from_memory_safe((UINT8*)logo_file.Message, logo_file.FileSize, bmp_x, bmp_y);
             gBS->FreePool(logo_file.Message);
+            SWAP_BUFFERS();
         }
     } else {
         for (CHAR16 d = L'A'; d <= L'Z'; d++) {
             if (!EFI_ERROR(SetCurrentDisk(d))) { found_disk = d; break; }
         }
     }
-
+    SWAP_BUFFERS();
     INIT_PROTOCOLS();
 
     RegisterCustomHandler(0x00, CommonExceptionHandler);
@@ -422,7 +417,7 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
     /* ── Шаг 6: рисуем заставку (только если шрифт есть) ───────────── */
     INT32 tl_x = (INT32)(vmode.width  / 2 - 50);
     INT32 tl_y = (INT32)(vmode.height / 2 + 74);
-
+    SWAP_BUFFERS();
     if (font_ok >= 0) {
         font_draw_string(L"SysFont", tl_x, tl_y, 32, 0xFFFFFF, L"Parrot OS");
 
@@ -433,11 +428,12 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
         UnicodeSPrint(&build_ver_unicode[current_len],
                       sizeof(build_ver_unicode) - (current_len * 2),
                       L" Build    Developed by ParrotSoft");
+                      SWAP_BUFFERS();
     }
 
     task_create(0, kernal, 5120);
     init_boot();
-
+    SWAP_BUFFERS();
     /* ── Шаг 7: загрузка start.pex ─────────────────────────────────── */
     EC16 file;
     EFI_STATUS Status = ReadFileByPath(StartFile, &file);
@@ -452,6 +448,7 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
             font_draw_string(L"SysFont", 20, tl_y + 50, 16, 0xFF4444, Buffer);
             font_draw_string(L"SysFont", 20, tl_y + 80, 14, 0xAAAAAA,
                 L"Check that start.pex is on the boot disk.");
+                SWAP_BUFFERS();
         }
         while(1) { __asm__ volatile ("hlt"); }
     }
@@ -472,9 +469,11 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
             CHAR16 Buffer[128];
             UnicodeSPrint(Buffer, sizeof(Buffer), L"LOAD ERROR: %r", Status);
             font_draw_string(L"SysFont", 20, tl_y + 50, 16, 0xFF4444, Buffer);
+            SWAP_BUFFERS();
         }
         while(1) { __asm__ volatile ("hlt"); }
     }
+    SWAP_BUFFERS();
     task_start_first();
 
     return EFI_SUCCESS;

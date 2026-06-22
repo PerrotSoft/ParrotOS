@@ -1,0 +1,289 @@
+#include "ParrotOS_API.h"
+
+// Координаты курсора и состояние клика
+int32_t mx = 100, my = 100;
+uint8_t mouse_down = 0;
+
+// Состояние экранов: 0 - Меню, 1 - Скорость Ввода, 2 - Математика, 3 - 3D Графика
+int current_screen = 0;
+uint64_t benchmark_result = 0;
+uint8_t test_running = 0;
+
+// Для теста реакции
+uint64_t reaction_target_time = 0;
+uint8_t reaction_signal_go = 0;
+uint32_t reaction_countdown = 0;
+
+// Структура кнопки меню
+typedef struct {
+    int x, y, w, h;
+    const CHAR16* text;
+    int target_screen;
+} Button;
+
+Button menu_buttons[3] = {
+    {10, 60, 220, 30, L"1. Reaction Input Speed", 1},
+    {10, 100, 220, 30, L"2. Math Computation", 2},
+    {10, 140, 220, 30, L"3. 3D Graphics Render", 3}
+};
+
+// Простой генератор случайных чисел на основе таймера
+uint32_t rand_state = 12345;
+uint32_t get_random(uint32_t min, uint32_t max) {
+    rand_state = rand_state * 1103515245 + 12345;
+    return min + ((rand_state / 65536) % (max - min + 1));
+}
+
+// --- Данные курсоров 16х16 ---
+const uint32_t cursor_normal[16 * 16] = {
+    0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFFFFFFFF, 0xFF000000, 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0xFF000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0xFFFFFFFF, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0xFF000000, 0xFF000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000
+};
+
+// Функция отрисовки кнопок интерфейса
+void DrawButton(Button btn) {
+    bool hovered = (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h);
+    uint32_t color = hovered ? 0x00FF00 : 0x00AA00;
+    
+    GfxDrawLine(btn.x, btn.y, btn.x + btn.w, btn.y, color);
+    GfxDrawLine(btn.x, btn.y + btn.h, btn.x + btn.w, btn.y + btn.h, color);
+    GfxDrawLine(btn.x, btn.y, btn.x, btn.y + btn.h, color);
+    GfxDrawLine(btn.x + btn.w, btn.y, btn.x + btn.w, btn.y + btn.h, color);
+    
+    GfxPrint(btn.x + 10, btn.y + 7, 14, 0xFFFFFF, (CHAR16*)btn.text);
+}
+
+// Отрисовка каркаса 3D-куба
+void Draw3DCube(float angle) {
+    float vertices[8][3] = {
+        {-40,-40,-40}, {40,-40,-40}, {40,40,-40}, {-40,40,-40},
+        {-40,-40,40},  {40,-40,40},  {40,40,40},  {-40,40,40}
+    };
+    int edges[12][2] = {
+        {0,1}, {1,2}, {2,3}, {3,0}, {4,5}, {5,6}, {6,7}, {7,4}, {0,4}, {1,5}, {2,6}, {3,7}
+    };
+
+    int proj_x[8], proj_y[8];
+    float c = 1.0f - (angle * angle) / 2.0f; 
+    float s = angle;                         
+
+    for (int i = 0; i < 8; i++) {
+        float x1 = vertices[i][0] * c - vertices[i][2] * s;
+        float z1 = vertices[i][0] * s + vertices[i][2] * c;
+        float y1 = vertices[i][1] * c - z1 * s;
+        
+        proj_x[i] = (int)(200 + x1);
+        proj_y[i] = (int)(140 + y1);
+    }
+
+    for (int i = 0; i < 12; i++) {
+        GfxDrawLine(proj_x[edges[i][0]], proj_y[edges[i][0]], proj_x[edges[i][1]], proj_y[edges[i][1]], 0x3892F3);
+    }
+}
+
+// Преобразование числа в строку (без внешних зависимостей от линковщика)
+void int_to_string(uint32_t val, CHAR16* out_str, const CHAR16* prefix, const CHAR16* suffix) {
+    CHAR16 rev[16];
+    int i = 0;
+    if (val == 0) {
+        rev[i++] = '0';
+    } else {
+        while (val > 0) {
+            rev[i++] = '0' + (val % 10);
+            val /= 10;
+        }
+    }
+    
+    int dst = 0;
+    while (*prefix) { out_str[dst++] = *prefix++; }
+    for (int j = i - 1; j >= 0; j--) { out_str[dst++] = rev[j]; }
+    while (*suffix) { out_str[dst++] = *suffix++; }
+    out_str[dst] = 0;
+}
+
+void update_display() {
+    GfxClear(0x121314);
+    GfxPrint(10, 10, 22, 0x00FF7F, L"ParrotOS Performance Suite");
+    GfxDrawLine(1, 35, 340, 35, 0x00FF00);
+
+    if (current_screen == 0) {
+        for (int i = 0; i < 3; i++) {
+            DrawButton(menu_buttons[i]);
+        }
+    } 
+    else if (current_screen == 1) {
+        GfxPrint(10, 50, 16, 0xFFFFFF, L"BENCHMARK 1: Input Reaction Speed");
+        
+        if (!test_running && benchmark_result == 0 && reaction_countdown == 0) {
+            GfxPrint(10, 90, 14, 0xAAAAAA, L"Press 'Enter' to ready up...");
+        } 
+        else if (reaction_countdown > 0) {
+            uint64_t current_time = 1;
+            if (current_time >= reaction_target_time) {
+                reaction_countdown = 0;
+                reaction_signal_go = 1;
+                benchmark_result = current_time;
+            } else {
+                uint64_t remaining = (reaction_target_time - current_time) / 1000 + 1;
+                CHAR16 count_buf[32];
+                int_to_string((uint32_t)remaining, count_buf, L"Wait for it: ", L"...");
+                GfxPrint(10, 90, 18, 0xFFFF00, count_buf);
+            }
+        }
+        else if (reaction_signal_go) {
+            GfxPrint(10, 90, 24, 0x00FF00, L"!!! PRESS ENTER NOW !!!");
+        }
+        else if (benchmark_result > 0) {
+            CHAR16 res_buf[32];
+            int_to_string((uint32_t)benchmark_result, res_buf, L"Your Reaction: ", L" ms");
+            GfxPrint(10, 90, 18, 0x00FFFF, res_buf);
+            GfxPrint(10, 120, 14, 0xAAAAAA, L"Press 'Enter' to retry.");
+        }
+        
+        GfxPrint(10, 210, 12, 0x555555, L"Press 'Backspace' to return to menu");
+    } 
+    else if (current_screen == 2) {
+        GfxPrint(10, 50, 16, 0xFFFFFF, L"BENCHMARK 2: CPU Prime Computation");
+        
+        if (test_running) {
+            GfxPrint(10, 100, 16, 0xFFFF00, L"Calculating primes up to 30000...");
+        } else {
+            GfxPrint(10, 90, 14, 0xAAAAAA, L"Press 'Enter' to trigger math load.");
+            if (benchmark_result > 0) {
+                CHAR16 math_buf[32];
+                int_to_string((uint32_t)benchmark_result, math_buf, L"Execution Time: ", L" ms");
+                GfxPrint(10, 130, 16, 0x00FF00, math_buf);
+            }
+        }
+        GfxPrint(10, 210, 12, 0x555555, L"Press 'Backspace' to return to menu");
+    } 
+    else if (current_screen == 3) {
+        GfxPrint(10, 50, 16, 0xFFFFFF, L"BENCHMARK 3: 3D Graphics Rasterizer");
+        
+        static float angle = 0.0f;
+        static uint32_t fps = 0;
+        static uint32_t frame_count = 0;
+        static uint64_t fps_timer = 0;
+
+        uint64_t now = 1;
+        frame_count++;
+        if (now - fps_timer >= 1000) {
+            fps = frame_count;
+            frame_count = 0;
+            fps_timer = now;
+        }
+
+        angle += 0.04f;
+        if (angle > 1.5f) angle = -1.5f;
+        
+        Draw3DCube(angle);
+        
+        CHAR16 fps_buf[16];
+        int_to_string(fps, fps_buf, L"FPS: ", L"");
+        GfxPrint(10, 80, 16, 0x00FF00, fps_buf);
+
+        GfxPrint(10, 210, 12, 0x555555, L"Press 'Backspace' to return to menu");
+    }
+
+    GfxDrawBitmap((uint32_t*)cursor_normal, 16, 16, mx, my);
+}
+
+void update_data() {
+    uint32_t key = KbdGetKey();
+
+    if (key == 'w') my -= 10; 
+    if (key == 's') my += 10;
+    if (key == 'a') mx -= 10;
+    if (key == 'd') mx += 10;
+
+    if (mx < 0) mx = 0; if (mx > 1920) mx = 1920;
+    if (my < 0) my = 0; if (my > 1080) my = 1080;
+
+    if (key == 'q') {
+        current_screen = 0;
+        test_running = 0;
+        benchmark_result = 0;
+        reaction_countdown = 0;
+        reaction_signal_go = 0;
+    }
+
+    if (current_screen == 0) {
+        if (key == 'e') {
+            mouse_down = 1;
+            for (int i = 0; i < 3; i++) {
+                if (mx >= menu_buttons[i].x && mx <= menu_buttons[i].x + menu_buttons[i].w &&
+                    my >= menu_buttons[i].y && my <= menu_buttons[i].y + menu_buttons[i].h) {
+                    current_screen = menu_buttons[i].target_screen;
+                    benchmark_result = 0;
+                    test_running = 0;
+                    rand_state += (uint32_t)1; 
+                    break;
+                }
+            }
+        } else if (key == 0) {
+            mouse_down = 0;
+        }
+    } 
+    else if (current_screen == 1) {
+        if (key == 'e') {
+            if (!test_running && reaction_countdown == 0) {
+                test_running = 1;
+                benchmark_result = 0;
+                reaction_signal_go = 0;
+                reaction_countdown = 1;
+                reaction_target_time = 1 + get_random(1500, 4000);
+            } 
+            else if (test_running && reaction_signal_go) {
+                uint64_t end_time = 1;
+                benchmark_result = end_time - benchmark_result;
+                test_running = 0;
+                reaction_signal_go = 0;
+            }
+            else if (test_running && reaction_countdown > 0) {
+                test_running = 0;
+                reaction_countdown = 0;
+                benchmark_result = 999; 
+            }
+        }
+    } 
+    else if (current_screen == 2) {
+        if (key == 'e' && !test_running) {
+            test_running = 1;
+            update_display();
+            SB(); 
+            
+            uint64_t start = 1;
+            
+            volatile uint32_t math_accumulator = 0;
+            for (uint32_t i = 2; i < 30000; i++) {
+                uint8_t is_prime = 1;
+                for (uint32_t j = 2; j * j <= i; j++) {
+                    if (i % j == 0) { is_prime = 0; break; }
+                }
+                if (is_prime) math_accumulator += i;
+            }
+            
+            benchmark_result = 1 - start;
+            test_running = 0;
+        }
+    }
+}
+
+void main(struct Process* pr) {
+    while (1) {
+        update_data();
+        update_display();
+        SB();
+    }
+}

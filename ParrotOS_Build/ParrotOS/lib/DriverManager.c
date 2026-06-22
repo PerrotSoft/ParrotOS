@@ -96,12 +96,12 @@ EFI_STATUS PathUp(VOID) {
     return ActiveStorage ? ActiveStorage->PathUp() : EFI_NOT_FOUND;
 }
 
-EC16 ListDir(VOID) {
+EC16 ListDir(CHAR16 *path) {
     if (!ActiveStorage) { 
         EC16 error = { EFI_NOT_FOUND, NULL, 0 }; 
         return error; 
     }
-    return ActiveStorage->ListDir();
+    return ActiveStorage->ListDir(path);
 }
 
 EFI_STATUS ChangeDir(CHAR16 *path) {
