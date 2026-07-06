@@ -1,4 +1,5 @@
 #include "../include/drivers/Network.h"
+#include "../include/drivers/DriverManager.h"
 #include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
 #include <Library/BaseMemoryLib.h>
@@ -129,11 +130,94 @@ EFI_STATUS Net_TcpConnect(CHAR16 *IpStr, UINT16 Port) {
     return Status;
 }
 
+EFI_STATUS Net_TcpSend(UINT8 *Data, UINTN Len) {
+    if (!mTcp4) return EFI_NOT_READY;
+
+    EFI_TCP4_IO_TOKEN Token;
+    EFI_TCP4_TRANSMIT_DATA TxData;
+
+    ZeroMem(&Token, sizeof(Token));
+    ZeroMem(&TxData, sizeof(TxData));
+
+    TxData.Push = TRUE;
+    TxData.Urgent = FALSE;
+    TxData.DataLength = (UINT32)Len;
+    TxData.FragmentCount = 1;
+    TxData.FragmentTable[0].FragmentLength = (UINT32)Len;
+    TxData.FragmentTable[0].FragmentBuffer = Data;
+
+    Token.Packet.TxData = &TxData;
+    gBS->CreateEvent(0, 0, NULL, NULL, &Token.CompletionToken.Event);
+
+    EFI_STATUS Status = mTcp4->Transmit(mTcp4, &Token);
+    if (!EFI_ERROR(Status)) {
+        Status = SafeWaitForEvent(Token.CompletionToken.Event, 5000);
+        if (!EFI_ERROR(Status)) Status = Token.CompletionToken.Status;
+    }
+
+    gBS->CloseEvent(Token.CompletionToken.Event);
+    return Status;
+}
+
+EFI_STATUS Net_TcpReceive(UINT8 *Buffer, UINTN *Len) {
+    if (!mTcp4 || !Buffer || !Len) return EFI_INVALID_PARAMETER;
+
+    EFI_TCP4_IO_TOKEN Token;
+    EFI_TCP4_RECEIVE_DATA RxData;
+
+    ZeroMem(&Token, sizeof(Token));
+    ZeroMem(&RxData, sizeof(RxData));
+
+    RxData.DataLength = (UINT32)*Len;
+    RxData.FragmentCount = 1;
+    RxData.FragmentTable[0].FragmentLength = (UINT32)*Len;
+    RxData.FragmentTable[0].FragmentBuffer = Buffer;
+
+    Token.Packet.RxData = &RxData;
+    gBS->CreateEvent(0, 0, NULL, NULL, &Token.CompletionToken.Event);
+
+    EFI_STATUS Status = mTcp4->Receive(mTcp4, &Token);
+    if (!EFI_ERROR(Status)) {
+        Status = SafeWaitForEvent(Token.CompletionToken.Event, 5000);
+        if (!EFI_ERROR(Status)) {
+            Status = Token.CompletionToken.Status;
+            *Len = RxData.DataLength;
+        }
+    }
+
+    gBS->CloseEvent(Token.CompletionToken.Event);
+    return Status;
+}
+
+EFI_STATUS Net_TcpDisconnect(VOID) {
+    if (!mTcp4) return EFI_NOT_READY;
+
+    EFI_TCP4_CLOSE_TOKEN Token;
+    ZeroMem(&Token, sizeof(Token));
+    Token.AbortOnClose = FALSE;
+    
+    gBS->CreateEvent(0, 0, NULL, NULL, &Token.CompletionToken.Event);
+    EFI_STATUS Status = mTcp4->Close(mTcp4, &Token);
+    
+    if (!EFI_ERROR(Status)) {
+        Status = SafeWaitForEvent(Token.CompletionToken.Event, 5000);
+        if (!EFI_ERROR(Status)) Status = Token.CompletionToken.Status;
+    }
+
+    gBS->CloseEvent(Token.CompletionToken.Event);
+    
+    mTcp4->Configure(mTcp4, NULL); 
+    mTcp4 = NULL;
+    return Status;
+}
+
 VOID Network_INIT(VOID) {
     static NETWORK_DRIVER_IF NetInterface = {
         .Init = Net_Init,
         .TcpConnect = Net_TcpConnect,
-        .TcpDisconnect = (VOID*)0,
+        .TcpSend = Net_TcpSend,
+        .TcpReceive = Net_TcpReceive,
+        .TcpDisconnect = Net_TcpDisconnect,
         .DnsLookup = Net_DnsLookup
     };
     RegisterDriver(&(DRIVER){.Type = DRIVER_TYPE_NETWORK, .Priority = 1, .Interface = &NetInterface});

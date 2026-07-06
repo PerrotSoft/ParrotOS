@@ -51,12 +51,18 @@ typedef enum {
     DRIVER_TYPE_AUDIO = 5,
     DRIVER_TYPE_MOUSE = 6
 } DRIVER_TYPE;
-typedef struct {
-    CHAR16  (*GetKey)(EFI_SYSTEM_TABLE *SytemTables);
-    BOOLEAN (*HasKey)(EFI_SYSTEM_TABLE *SytemTables);
-    VOID    (*Reset)(EFI_SYSTEM_TABLE *SytemTables);
-} KEY_DRIVER_IF;
 
+typedef struct {
+    BOOLEAN (*HasKey)(EFI_SYSTEM_TABLE *SytemTables);
+    CHAR16  (*GetKey)(EFI_SYSTEM_TABLE *SytemTables);
+    VOID    (*Reset)(EFI_SYSTEM_TABLE *SytemTables);
+    
+    // Новые функции драйвера в интерфейсе:
+    CHAR16  (*GetKeyNonBlocking)(EFI_SYSTEM_TABLE *SystemTables);
+    UINTN   (*GetBuffer)(EFI_SYSTEM_TABLE *SystemTables, CHAR16* UserBuffer, UINTN MaxLength);
+    UINTN (*GetBufferSize)(EFI_SYSTEM_TABLE *SystemTables);
+    VOID  (*FlushBuffer)(EFI_SYSTEM_TABLE *SystemTables);
+} KEY_DRIVER_IF;
 typedef struct {
     EFI_STATUS (*ReadFileByPath)(CHAR16 *path_in, EC16 *out);
     EFI_STATUS (*SetCurrentDisk)(CHAR16 Letter);
@@ -124,6 +130,10 @@ VOID INIT(EFI_SYSTEM_TABLE *SytemTables);
 CHAR16 GetKey(VOID);
 BOOLEAN HasKey(VOID);
 VOID Reset(VOID);
+CHAR16 GetKeyNonBlocking(VOID); 
+UINTN GetKeyboardBuffer(CHAR16* UserBuffer, UINTN MaxLength); 
+UINTN GetKeyboardBufferSize(VOID);
+VOID  FlushKeyboard(VOID);
 
 EFI_STATUS ReadFileByPath(CHAR16 *path_in, EC16 *out);
 EFI_STATUS SetCurrentDisk(CHAR16 Letter);

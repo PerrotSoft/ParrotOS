@@ -19,6 +19,7 @@
   lib/font.c
   lib/AudioDriver.c
   lib/MouseDriver.c
+  lib/pdl.c
 
 [Packages]
   MdePkg/MdePkg.dec

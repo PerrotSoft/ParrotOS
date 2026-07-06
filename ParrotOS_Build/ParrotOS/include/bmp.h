@@ -5,7 +5,7 @@
 #include <Library/MemoryAllocationLib.h>
 #include <string.h>
 #include "drivers/Video_Driver.h"
-
+#include <Library/BaseMemoryLib.h>
 #pragma pack(push,1)
 typedef struct {
     UINT16 bfType;
@@ -107,5 +107,67 @@ EFI_STATUS draw_bmp_from_memory_safe(const UINT8 *data, UINTN size, INT32 x0, IN
 
     DRAW_BITMAP32(buf, draw_w, draw_h, draw_x0, draw_y0);
     FreePool(buf);
+    return EFI_SUCCESS;
+}
+EFI_STATUS parse_bmp_to_buffer(
+    const UINT8 *data, 
+    UINTN size, 
+    UINT32 *out_w, 
+    UINT32 *out_h, 
+    UINT32 **out_buf
+) {
+    if (!data || !out_w || !out_h || !out_buf)
+        return EFI_INVALID_PARAMETER;
+
+    if (size < sizeof(BMP_FILEHEADER) + sizeof(BMP_INFOHEADER))
+        return bmp_fail(L"Buffer too small", EFI_INVALID_PARAMETER);
+
+    BMP_FILEHEADER fh;
+    BMP_INFOHEADER ih;
+    CopyMem(&fh, data, sizeof(fh));
+    CopyMem(&ih, data + sizeof(fh), sizeof(ih));
+
+    EFI_STATUS compat = check_bmp_compatibility(&fh, &ih, size);
+    if (EFI_ERROR(compat)) return bmp_fail(L"Incompatible BMP file", compat);
+
+    INT32 bmp_w = ih.biWidth;
+    INT32 bmp_h = ih.biHeight;
+    BOOLEAN top_down = bmp_h < 0;
+
+    UINT32 width = (UINT32)bmp_w;
+    UINT32 height = (UINT32)(top_down ? -bmp_h : bmp_h);
+
+    if (width == 0 || height == 0) return EFI_INVALID_PARAMETER;
+
+    UINT32 bpp_bytes = ih.biBitCount / 8;
+    UINT64 row_stride = ((UINT64)width * bpp_bytes + 3) & ~3ULL;
+
+    // Защита от выхода за границы файла при чтении пикселей
+    if (fh.bfOffBits >= size || fh.bfOffBits + height * row_stride > size) {
+        return bmp_fail(L"Malformed BMP: pixels out of bounds", EFI_VOLUME_CORRUPTED);
+    }
+
+    const UINT8 *pixels = data + fh.bfOffBits;
+
+    // Выделяем память под выходной массив цветов ARGB/XRGB (32 бита)
+     UINT32 *buf = AllocatePool(width * height * sizeof(UINT32));
+    if (!buf) return bmp_fail(L"Cannot allocate buffer", EFI_OUT_OF_RESOURCES);
+
+    for (UINT32 yy = 0; yy < height; yy++) {
+        UINT32 src_row = top_down ? yy : (height - 1 - yy);
+        const UINT8 *row_ptr = pixels + src_row * row_stride;
+
+        for (UINT32 xx = 0; xx < width; xx++) {
+            const UINT8 *p = row_ptr + xx * bpp_bytes;
+            UINT32 r = p[2], g = p[1], b = p[0];
+            buf[yy * width + xx] = (r << 16) | (g << 8) | b;
+        }
+    }
+
+    // Передаем значения вызывающему коду через указатели
+    *out_w = width;
+    *out_h = height;
+    *out_buf = buf;
+
     return EFI_SUCCESS;
 }

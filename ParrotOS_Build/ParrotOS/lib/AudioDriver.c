@@ -192,21 +192,31 @@ EFI_STATUS DriverPlayRaw(UINT8 *Buffer, UINTN Size) {
     return EFI_SUCCESS;
 }
 
-// Инициализация аудиосистемы ядра
 VOID InitSimpleAudio() {
-    // 1. Ищем аппаратуру Intel HDA на PCI шине
     if (FindHdaController()) {
         g_HdaAvailable = TRUE;
 
-        // Производим аппаратный сброс (Reset) HDA контроллера
+        // ПРАВИЛЬНЫЙ АППАРАТНЫЙ СБРОС (Hardware Reset Sequence)
         UINT32 gctl = HdaRead32(HDA_REG_GCTL);
-        HdaWrite32(HDA_REG_GCTL, gctl & ~0x01); // Начинаем сброс
-        if (gBS) gBS->Stall(1000);
-        HdaWrite32(HDA_REG_GCTL, HdaRead32(HDA_REG_GCTL) | 0x01); // Выходим из сброса
-        if (gBS) gBS->Stall(1000);
+        HdaWrite32(HDA_REG_GCTL, gctl & ~0x01); // Опускаем бит Reset (уводим в сброс)
+        
+        // Ждем, пока железо реально не уйдет в сброс
+        while (HdaRead32(HDA_REG_GCTL) & 0x01) {
+            if (gBS) gBS->Stall(100); 
+        }
+
+        if (gBS) gBS->Stall(10000); // Даем железу 10 мс передохнуть
+
+        HdaWrite32(HDA_REG_GCTL, HdaRead32(HDA_REG_GCTL) | 0x01); // Поднимаем бит Reset (включаем)
+        
+        // Ждем, пока железо не проснется
+        UINT32 timeout = 500; // 50 мс таймаут
+        while ((HdaRead32(HDA_REG_GCTL) & 0x01) == 0 && timeout > 0) {
+            if (gBS) gBS->Stall(100);
+            timeout--;
+        }
     }
 
-    // 2. Регистрируем интерфейсы в общую систему драйверов ParrotOS
     static AUDIO_DRIVER_IF audio_if;
     audio_if.Beep = AudioBeepImp;
     audio_if.PlayRaw = DriverPlayRaw;

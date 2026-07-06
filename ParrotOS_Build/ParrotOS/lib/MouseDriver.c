@@ -1,82 +1,75 @@
-#include <Uefi.h>
-#include <Library/UefiLib.h>
 #include <Library/UefiBootServicesTableLib.h>
+#include <Library/UefiLib.h>
 #include <Protocol/SimplePointer.h>
-#include "../include/drivers/Mausedrv.h"
-#include "../include/drivers/Video_Driver.h"
 #include "../include/drivers/DriverManager.h"
+#include "../include/drivers/Mausedrv.h"
 
-static EFI_SIMPLE_POINTER_PROTOCOL *gMouse = NULL;
-static INT32 gPosX = 0;
-static INT32 gPosY = 0;
-static VideoMode* vmode_mouse = NULL;
+// Поддерживаем до 8 одновременно подключенных мышек/тачпадов
+#define MAX_MICE 8
+static EFI_SIMPLE_POINTER_PROTOCOL* mMice[MAX_MICE];
+static UINTN mMouseCount = 0;
 
-EFI_STATUS MouseInit(VOID) {
-    EFI_STATUS Status;
+EFI_STATUS Mouse_Init() {
+    UINTN HandleCount = 0;
+    EFI_HANDLE* Handles = NULL;
+    mMouseCount = 0;
 
-    Status = gBS->LocateProtocol(&gEfiSimplePointerProtocolGuid, NULL, (VOID**)&gMouse);
-    if (EFI_ERROR(Status)) {
-        return Status;
+    // Ищем все устройства, которые поддерживают протокол мыши
+    EFI_STATUS Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimplePointerProtocolGuid, NULL, &HandleCount, &Handles);
+    if (EFI_ERROR(Status)) return Status;
+
+    // Подключаем все найденные мышки
+    for (UINTN i = 0; i < HandleCount && mMouseCount < MAX_MICE; i++) {
+        Status = gBS->OpenProtocol(
+            Handles[i], 
+            &gEfiSimplePointerProtocolGuid, 
+            (VOID**)&mMice[mMouseCount], 
+            gImageHandle, 
+            NULL, 
+            EFI_OPEN_PROTOCOL_BY_HANDLE_PROTOCOL
+        );
+        
+        if (!EFI_ERROR(Status)) {
+            mMice[mMouseCount]->Reset(mMice[mMouseCount], TRUE); // Сбрасываем мышь (важно для реального железа)
+            mMouseCount++;
+        }
     }
-
-    Status = gMouse->Reset(gMouse, TRUE);
-    if (EFI_ERROR(Status)) {
-        return Status;
-    }
-
-    vmode_mouse = GET_CURRENT_VMODE();
-    if (vmode_mouse != NULL) {
-        gPosX = (INT32)vmode_mouse->width / 2;
-        gPosY = (INT32)vmode_mouse->height / 2;
-    }
-
-    return EFI_SUCCESS;
+    
+    if (Handles) gBS->FreePool(Handles);
+    return (mMouseCount > 0) ? EFI_SUCCESS : EFI_NOT_FOUND;
 }
 
-EFI_STATUS MouseGetState(INT32 *x, INT32 *y, BOOLEAN *lb, BOOLEAN *rb) {
-    if (gMouse == NULL) return EFI_NOT_READY;
+EFI_STATUS Mouse_GetState(INT32* x, INT32* y, BOOLEAN* lb, BOOLEAN* rb) {
+    if (mMouseCount == 0) return EFI_NOT_READY;
+    
+    *x = 0; *y = 0; *lb = FALSE; *rb = FALSE;
+    BOOLEAN MovedOrClicked = FALSE;
 
-    EFI_SIMPLE_POINTER_STATE State;
-    EFI_STATUS Status = gMouse->GetState(gMouse, &State);
-
-    if (!EFI_ERROR(Status)) {
-        gPosX += State.RelativeMovementX / 2;
-        gPosY += State.RelativeMovementY / 2;
-
-        if (vmode_mouse != NULL) {
-            if (gPosX < 0) gPosX = 0;
-            if (gPosY < 0) gPosY = 0;
-            if (gPosX >= (INT32)vmode_mouse->width) gPosX = (INT32)vmode_mouse->width - 1;
-            if (gPosY >= (INT32)vmode_mouse->height) gPosY = (INT32)vmode_mouse->height - 1;
+    // Опрашиваем все мышки (и геймерскую USB, и тачпад)
+    for (UINTN i = 0; i < mMouseCount; i++) {
+        EFI_SIMPLE_POINTER_STATE State;
+        if (mMice[i]->GetState(mMice[i], &State) == EFI_SUCCESS) {
+            *x += State.RelativeMovementX;
+            *y += State.RelativeMovementY;
+            if (State.LeftButton)  *lb = TRUE;
+            if (State.RightButton) *rb = TRUE;
+            MovedOrClicked = TRUE;
         }
-
-        if (x) *x = gPosX;
-        if (y) *y = gPosY;
-        if (lb) *lb = State.LeftButton;
-        if (rb) *rb = State.RightButton;
-        
-        return EFI_SUCCESS;
     }
 
-    return Status;
+    return MovedOrClicked ? EFI_SUCCESS : EFI_NOT_READY;
 }
 
 VOID RegisterMouseDriver(VOID) {
-    EFI_STATUS Status = MouseInit();
-    
-    if (EFI_ERROR(Status)) {
-        return;
-    }
-    
-    static MOUSE_DRIVER_IF mouse_if = {
-        .Init = MouseInit,
-        .GetState = MouseGetState
+    static MOUSE_DRIVER_IF MouseIf = {
+        .Init = Mouse_Init,
+        .GetState = Mouse_GetState
     };
-
-    DRIVER mouse_driver;
-    mouse_driver.Type = DRIVER_TYPE_MOUSE;
-    mouse_driver.Priority = 5;
-    mouse_driver.Interface = &mouse_if;
-
-    RegisterDriver(&mouse_driver);
+    
+    DRIVER d;
+    d.Type = DRIVER_TYPE_MOUSE;
+    d.Priority = 10;
+    d.Interface = &MouseIf;
+    
+    RegisterDriver(&d);
 }

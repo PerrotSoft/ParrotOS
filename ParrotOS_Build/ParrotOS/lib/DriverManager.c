@@ -59,6 +59,7 @@ VOID INIT(EFI_SYSTEM_TABLE *SytemTables)
 }
 
 
+
 // ==============================================================================
 // KEYBOARD
 // ==============================================================================
@@ -75,7 +76,23 @@ VOID Reset(VOID) {
     if (ActiveKeyboard) ActiveKeyboard->Reset(SystemTables);
 }
 
+CHAR16 GetKeyNonBlocking(VOID) {
+    return (ActiveKeyboard && SystemTables) ? ActiveKeyboard->GetKeyNonBlocking(SystemTables) : 0;
+}
 
+UINTN GetKeyboardBuffer(CHAR16* UserBuffer, UINTN MaxLength) {
+    return (ActiveKeyboard && SystemTables) ? ActiveKeyboard->GetBuffer(SystemTables, UserBuffer, MaxLength) : 0;
+}
+UINTN GetKeyboardBufferSize(VOID) {
+    return (ActiveKeyboard && SystemTables)
+           ? ActiveKeyboard->GetBufferSize(SystemTables) : 0;
+}
+ 
+VOID FlushKeyboard(VOID) {
+    if (ActiveKeyboard && SystemTables)
+        ActiveKeyboard->FlushBuffer(SystemTables);
+}
+ 
 // ==============================================================================
 // STORAGE
 // ==============================================================================

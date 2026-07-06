@@ -12,7 +12,8 @@
 #include "include/task.h"
 #include "include/bmp.h"
 #include "include/pex.h"
-#include "include/bootmenu.h"
+#include "include/pdl.h"
+// #include "include/bootmenu.h"
 #include "include/font.h"
 #include "include/Protocols.h"
 #include <stdbool.h>
@@ -44,6 +45,7 @@ CHAR16* ExceptionNames[] = {
     L"0x0D: General Protection Fault",
     L"0x0E: Page Fault"
 };
+
 UINT64 GetInternalTicks(void)
 {
     EFI_TIME Time;
@@ -71,6 +73,15 @@ VOID EFIAPI Int20h_SystemTime(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT 
         case 0x02: gBS->Stall((UINTN)ctx->REG_CX * 1000); break;
         case 0x03: ctx->REG_AX = (UINT64)ACTUAL_BUILD; break;
         case 0x04: ctx->REG_AX = (UINT64)Version; break;
+        case 0x05:
+        ctx->REG_AX = (UINT64)parse_bmp_to_buffer(
+            (const UINT8 *)ctx->REG_CX,
+            (UINTN)ctx->REG_DX,
+            (UINT32 *)ctx->REG_R8,
+            (UINT32 *)ctx->REG_R9,
+            (UINT32 **)ctx->REG_R10
+        );
+        break;
     }
 }
 
@@ -93,16 +104,63 @@ VOID EFIAPI Int21h_ConsoleIO(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT C
 // =====================================================================
 // ПРЕРЫВАНИЕ 0x22: КЛАВИАТУРА
 // =====================================================================
+// ПРЕРЫВАНИЕ 0x22: КЛАВИАТУРА
+// =====================================================================
+// RAX = номер команды
+// 0x01 — GetKeyNonBlocking()  → RAX = код клавиши (0 если нет)
+// 0x02 — GetBuffer()          → RCX = ptr, RDX = maxlen → RAX = count
+// 0x03 — FlushBuffer()        → быстрая очистка буфера
+// 0x04 — GetKey()             → RAX = код клавиши (блокирующий)
+// 0x05 — HasKey()             → RAX = 1/0
+// 0x06 — GetBufferSize()      → RAX = количество клавиш в буфере
+// 0x07 — Reset()              → полный сброс железа + буфера
+// =====================================================================
 VOID EFIAPI Int22h_Keyboard(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
+
     switch (ctx->REG_AX) {
-        case 0x01: ctx->REG_AX = (UINT64)GetKey(); break;
-        case 0x02: ctx->REG_AX = (UINT64)HasKey(); break;
-        case 0x03: Reset(); break;
+
+        case 0x01: // Неблокирующее чтение — 0 если клавиш нет
+            ctx->REG_AX = (UINT64)GetKeyNonBlocking();
+            break;
+
+        case 0x02: // Выгрузить весь буфер в память программы
+            {
+                CHAR16* UserBuffer = (CHAR16*)ctx->REG_CX;
+                UINTN   MaxLength  = (UINTN)ctx->REG_DX;
+                ctx->REG_AX = (UserBuffer && MaxLength > 0)
+                            ? (UINT64)GetKeyboardBuffer(UserBuffer, MaxLength)
+                            : 0;
+            }
+            break;
+
+        case 0x03: // Быстрая очистка буфера (при смене программы)
+            FlushKeyboard();
+            ctx->REG_AX = 0;
+            break;
+
+        case 0x04: // Блокирующее чтение — ждёт пока не нажата клавиша
+            ctx->REG_AX = (UINT64)GetKey();
+            break;
+
+        case 0x05: // Есть ли клавиша прямо сейчас?
+            ctx->REG_AX = HasKey() ? 1 : 0;
+            break;
+
+        case 0x06: // Сколько клавиш сейчас в буфере?
+            ctx->REG_AX = (UINT64)GetKeyboardBufferSize();
+            break;
+
+        case 0x07: // Полный сброс железа + очистка буфера
+            Reset();
+            ctx->REG_AX = 0;
+            break;
+
+        default:
+            ctx->REG_AX = 0xFFFF; // Неизвестная команда
+            break;
     }
 }
-
-// =====================================================================
 // ПРЕРЫВАНИЕ 0x23: ФАЙЛОВАЯ СИСТЕМА (STORAGE)
 // =====================================================================
 VOID EFIAPI Int23h_Storage(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
@@ -165,7 +223,7 @@ VOID EFIAPI Int24h_Graphics(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Co
         case 0x0E: GPU_RUN_COMPUTE(ctx->REG_CX, (UINT32)ctx->REG_DX); break;
         case 0x0F: ctx->REG_AX = (UINT64)GET_VIDEO_STATUS_STR(); break;
         case 0x10: ctx->REG_AX = (UINT64)SET_VIDEO_MODE((UINT32)ctx->REG_CX, (UINT32)ctx->REG_DX); break;
-        case 0x11:ctx->REG_AX = (UINT64)draw_bmp_from_memory_safe((UINT8*)ctx->Rcx, (UINTN)ctx->Rdx, (INT32)ctx->R8, (INT32)ctx->R9);break;
+        case 0x11: ctx->REG_AX = (UINT64)draw_bmp_from_memory_safe((UINT8*)ctx->REG_CX, (UINTN)ctx->REG_DX, (INT32)ctx->REG_R8, (INT32)ctx->REG_R9); break;
     }
 }
 
@@ -188,6 +246,23 @@ VOID EFIAPI Int25h_MultiTasking(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEX
         case 0x0A: ctx->REG_AX = (UINT64)GetCurrentCallerProcess(); break;
         case 0x0B: ctx->REG_AX = (UINT64)Process_Exit((INT32)ctx->REG_CX); break;
         case 0x0C: ctx->REG_AX = (UINT64)GetTaskById((INT32)ctx->REG_CX); break;
+        case 0x0D: { // Загрузка библиотеки: RCX = Путь (CHAR16*), RDX = Указатель на handle (PDL_LIBRARY**)
+            PDL_LIBRARY** outHandle = (PDL_LIBRARY**)ctx->REG_DX;
+            if (outHandle != NULL) {
+                ctx->REG_AX = (UINT64)PdlLoad((CHAR16*)ctx->REG_CX, outHandle);
+            } else {
+                ctx->REG_AX = EFI_INVALID_PARAMETER;
+            }
+        } break;
+
+        case 0x0E: { // Выгрузка библиотеки: RCX = Handle (PDL_LIBRARY*)
+            PdlUnload((PDL_LIBRARY*)ctx->REG_CX);
+            ctx->REG_AX = 0;
+        } break;
+
+        case 0x0F: { // Получение адреса функции: RCX = Handle, RDX = Имя функции (CHAR8*)
+            ctx->REG_AX = (UINT64)PdlGetProcAddress((PDL_LIBRARY*)ctx->REG_CX, (const CHAR8*)ctx->REG_DX);
+        } break;
     }
 }
 
@@ -240,58 +315,208 @@ VOID EFIAPI Int29h_Mouse(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Conte
         case 0x02: ctx->REG_AX = (UINT64)GET_MOUSE_STATE((INT32*)ctx->REG_CX, (INT32*)ctx->REG_DX, (BOOLEAN*)ctx->REG_R8, (BOOLEAN*)ctx->REG_R9); break;
     }
 }
+// =====================================================================
+// ПРЕРЫВАНИЕ 0x2A: MEMORY ALLOCATION (SECURE)
+// =====================================================================
+typedef struct {
+    UINT64 TotalBytes;
+    UINT64 FreeBytes;
+    UINT64 UsedBytes;
+} MEMORY_STATS;
 
 VOID EFIAPI Int2Ah_Memory(IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     if (!IFProcessHasRight(205)) return;
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
     switch (ctx->REG_AX) {
-        case 0x01: {
+        case 0x01: { // Выделение памяти
+            UINTN size = (UINTN)ctx->REG_CX;
+            // ЗАЩИТА 1: Не даем выделять 0 байт или больше 64 МБ за раз (защита от утечек)
+            if (size == 0 || size > 1024 * 1024 * 64) {
+                ctx->REG_AX = 0; 
+                break;
+            }
+            
             VOID* ptr = NULL;
-            ctx->REG_AX = (gBS->AllocatePool(EfiLoaderData, (UINTN)ctx->REG_CX, &ptr) == EFI_SUCCESS) ? (UINT64)ptr : 0;
+            if (gBS->AllocatePool(EfiLoaderData, size, &ptr) == EFI_SUCCESS) {
+                // ЗАЩИТА 2: Очистка памяти нулями (Security). Никакого мусора от других программ.
+                gBS->SetMem(ptr, size, 0); 
+                ctx->REG_AX = (UINT64)ptr;
+            } else {
+                ctx->REG_AX = 0; // Ошибка выделения
+            }
         } break;
-        case 0x02: if (ctx->REG_CX) gBS->FreePool((VOID*)ctx->REG_CX); break;
+        
+        case 0x02: { // Освобождение памяти
+            VOID* ptr = (VOID*)ctx->REG_CX;
+            // ЗАЩИТА 3: Защита от Null-Pointer Dereference
+            if (ptr != NULL) { 
+                gBS->FreePool(ptr);
+            }
+        } break;
+
+        case 0x03: { // GetMemoryStats(MEMORY_STATS* out) — общая картина по RAM
+            MEMORY_STATS* out = (MEMORY_STATS*)ctx->REG_CX;
+            if (out == NULL) { ctx->REG_AX = 0; break; }
+
+            UINTN mapSize = 0, mapKey, descSize;
+            UINT32 descVer;
+            // Первый вызов с NULL — узнаём нужный размер буфера
+            EFI_STATUS st = gBS->GetMemoryMap(&mapSize, NULL, &mapKey, &descSize, &descVer);
+            if (st != EFI_BUFFER_TOO_SMALL) { ctx->REG_AX = 0; break; }
+
+            // Запас: карта памяти может измениться между двумя вызовами
+            // (например, из-за AllocatePool ниже), поэтому берём с запасом
+            mapSize += descSize * 8;
+
+            EFI_MEMORY_DESCRIPTOR* map = NULL;
+            if (gBS->AllocatePool(EfiLoaderData, mapSize, (VOID**)&map) != EFI_SUCCESS) {
+                ctx->REG_AX = 0; break;
+            }
+
+            st = gBS->GetMemoryMap(&mapSize, map, &mapKey, &descSize, &descVer);
+            if (EFI_ERROR(st)) {
+                gBS->FreePool(map);
+                ctx->REG_AX = 0; break;
+            }
+
+            UINT64 totalPages = 0, freePages = 0;
+            UINT8* p = (UINT8*)map;
+            for (UINTN off = 0; off < mapSize; off += descSize) {
+                EFI_MEMORY_DESCRIPTOR* d = (EFI_MEMORY_DESCRIPTOR*)(p + off);
+                totalPages += d->NumberOfPages;
+                // Считаем "свободной" память, которую ОС ещё может использовать:
+                // конвенциональную + boot services (после ExitBootServices
+                // последняя тоже становится доступной ОС, а мы, судя по
+                // использованию gBS в рантайме, ExitBootServices не вызываем).
+                if (d->Type == EfiConventionalMemory ||
+                    d->Type == EfiBootServicesCode   ||
+                    d->Type == EfiBootServicesData) {
+                    freePages += d->NumberOfPages;
+                }
+            }
+            gBS->FreePool(map);
+
+            out->TotalBytes = totalPages * EFI_PAGE_SIZE;
+            out->FreeBytes  = freePages  * EFI_PAGE_SIZE;
+            out->UsedBytes  = out->TotalBytes - out->FreeBytes;
+            ctx->REG_AX = 1; // успех
+        } break;
     }
 }
 VOID KernelPanic(const CHAR16* message, EFI_SYSTEM_CONTEXT Context, UINT64 ErrorCode) {
     SYSTEM_CONTEXT_TYPE* ctx = Context.CTX_FIELD;
-    gBS->SetWatchdogTimer(60, 0x00, 0, NULL);
 
-    CLEAR_SCREEN(0x0000AA); 
+    // 60 секунд до авторебута
+    gBS->SetWatchdogTimer(60, 0x00, 0, NULL);
 
     INT32 screen_w = (INT32)vmode.width;
     INT32 screen_h = (INT32)vmode.height;
     INT32 margin_x = screen_w / 12;
-
-    font_draw_string(L"SysFont", margin_x, screen_h / 6, 80, 0xFFFFFF, L":(");
-
-    INT32 text_y = (screen_h / 6) + 100;
-    font_draw_string(L"SysFont", margin_x, text_y, 22, 0xFFFFFF, 
-        L"Your PC ran into a problem and needs to restart.");
-    font_draw_string(L"SysFont", margin_x, text_y + 40, 20, 0xFFFFFF, 
-        L"We're just collecting some error info, and then we'll restart for you.");
-
-    font_draw_string(L"SysFont", margin_x, text_y + 120, 18, 0xFFFFFF, L"0% complete");
-
+    INT32 text_y   = (screen_h / 6) + 100;
     INT32 footer_y = screen_h - (screen_h / 4);
-
-    font_draw_string(L"SysFont", margin_x, footer_y, 16, 0xCCCCCC, 
-        L"For more information about this issue, visit: https://perrotsoft.github.io/datapedia");
     
-    font_draw_string(L"SysFont", margin_x, footer_y + 40, 14, 0xEEEEEE, L"Stop Code: ");
-    font_draw_string(L"SysFont", margin_x + 110, footer_y + 40, 14, 0xFFFFFF, message);
-    SWAP_BUFFERS();
-    if (ctx) {
-        font_draw_string(L"SysFont", margin_x, footer_y + 70, 12, 0xAAAAAA, L"RIP: ");
+    EC16 fdegf;
+    ReadFileByPath(L"/EFI/log.txt", &fdegf);
+    
+    char data[256];
+    AsciiSPrint(data, sizeof(data), "Kernel Panic: %S, Error Code: 0x%016llX\n", (message != NULL) ? message : L"UNKNOWN", ErrorCode);
+    
+    WriteFile(L"/EFI/log.txt", (UINT16 *)data, AsciiStrLen(data));
+
+    // --- Анимация прогресса (0% → 100% за ~60 сек) ---
+    for (UINT32 pct = 0; pct <= 100; pct++) {
+
+        CLEAR_SCREEN(0x0000AA);
+
+        // Смайлик
+        font_draw_string(L"SysFont", margin_x, screen_h / 6,
+                         80, 0xFFFFFF, L":(");
+
+        // Основной текст
+        font_draw_string(L"SysFont", margin_x, text_y,
+                         22, 0xFFFFFF,
+                         L"Your PC ran into a problem and needs to restart.");
+        font_draw_string(L"SysFont", margin_x, text_y + 40,
+                         20, 0xFFFFFF,
+                         L"We're just collecting some error info, and then we'll restart for you.");
+
+        // Прогресс
+        CHAR16 progress_buf[16];
+        UnicodeSPrint(progress_buf, sizeof(progress_buf), L"%u%% complete", pct);
+        font_draw_string(L"SysFont", margin_x, text_y + 120,
+                         18, 0xFFFFFF, progress_buf);
+
+        // Ссылка и стоп-код
+        font_draw_string(L"SysFont", margin_x, footer_y,
+                         16, 0xCCCCCC,
+                         L"For more information about this issue and to view stop code details,");
+        font_draw_string(L"SysFont", margin_x, footer_y + 24,
+                         16, 0xCCCCCC,
+                         L"visit: https://parrotsoft.vercel.app/datapedia?doc=fatals%20errors");
+
+        font_draw_string(L"SysFont", margin_x, footer_y + 64,
+                         14, 0xEEEEEE, L"Stop Code: ");
+        font_draw_string(L"SysFont", margin_x + 110, footer_y + 64,
+                         14, 0xFFFFFF,
+                         (message != NULL) ? message : L"UNKNOWN_ERROR");
+
+        // Error Code (hex)
+        CHAR16 ec_buf[32];
+        UnicodeSPrint(ec_buf, sizeof(ec_buf), L"Error Code: 0x%016llX", ErrorCode);
+        font_draw_string(L"SysFont", margin_x, footer_y + 88,
+                         14, 0xAAAAAA, ec_buf);
+
+        // Регистры (если контекст доступен)
+        if (ctx != NULL) {
+            CHAR16 reg_buf[64];
+            INT32   reg_y = footer_y + 120;
+
+            UnicodeSPrint(reg_buf, sizeof(reg_buf), L"RIP: 0x%016llX    CS: 0x%04llX",
+                          ctx->Rip, ctx->Cs);
+            font_draw_string(L"SysFont", margin_x, reg_y,
+                             12, 0xAAAAAA, reg_buf);
+
+            UnicodeSPrint(reg_buf, sizeof(reg_buf), L"RAX: 0x%016llX    RBX: 0x%016llX",
+                          ctx->Rax, ctx->Rbx);
+            font_draw_string(L"SysFont", margin_x, reg_y + 20,
+                             12, 0xAAAAAA, reg_buf);
+
+            UnicodeSPrint(reg_buf, sizeof(reg_buf), L"RCX: 0x%016llX    RDX: 0x%016llX",
+                          ctx->Rcx, ctx->Rdx);
+            font_draw_string(L"SysFont", margin_x, reg_y + 40,
+                             12, 0xAAAAAA, reg_buf);
+
+            UnicodeSPrint(reg_buf, sizeof(reg_buf), L"RSP: 0x%016llX    RBP: 0x%016llX",
+                          ctx->Rsp, ctx->Rbp);
+            font_draw_string(L"SysFont", margin_x, reg_y + 60,
+                             12, 0xAAAAAA, reg_buf);
+
+            UnicodeSPrint(reg_buf, sizeof(reg_buf), L"RFLAGS: 0x%016llX",
+                          ctx->Rflags);
+            font_draw_string(L"SysFont", margin_x, reg_y + 80,
+                             12, 0xAAAAAA, reg_buf);
+        }
+
+        // Нижняя строка — таймер
+        CHAR16 reboot_buf[64];
+        UINT32 secs_left = 60 - (pct * 60 / 100);
+        UnicodeSPrint(reboot_buf, sizeof(reboot_buf),
+                      L"System will automatically reboot in %u seconds.", secs_left);
+        font_draw_string(L"SysFont", margin_x, screen_h - 40,
+                         12, 0x888888, reboot_buf);
+
+        SWAP_BUFFERS();
+
+        // ~600 мс на процент ≈ 60 сек итого
+        gBS->Stall(600000);
     }
 
-    font_draw_string(L"SysFont", margin_x, screen_h - 40, 12, 0x888888, 
-        L"System will automatically reboot in 60 seconds.");
-    CLEAR_SCREEN(0x0000AA); 
-    SWAP_BUFFERS();
-    while(TRUE) {
-        __asm__ ("hlt");
+    // После анимации — уходим в halt (watchdog сам перезагрузит)
+    while (TRUE) {
+        __asm__ volatile ("cli; hlt");
     }
 }
+
 VOID EFIAPI CommonExceptionHandler (IN EFI_EXCEPTION_TYPE Type, IN EFI_SYSTEM_CONTEXT Context) {
     if (Type <= 0x0E) {
         KernelPanic(ExceptionNames[Type], Context, (UINT64)Type);
@@ -341,7 +566,7 @@ EFI_STATUS EFIAPI UefiMain (IN EFI_HANDLE ImageHandle, IN EFI_SYSTEM_TABLE *Syst
     INIT(SystemTable);
     init_vd();           
     Fat32_Storage_INIT();
-    Keyboard_INIT();
+    Keyboard_INIT(SystemTable);
     InitSimpleAudio();
     RegisterMouseDriver();
     INITDRV();
@@ -432,7 +657,6 @@ SWAP_BUFFERS();
     }
 
     task_create(0, kernal, 5120);
-    init_boot();
     SWAP_BUFFERS();
     /* ── Шаг 7: загрузка start.pex ─────────────────────────────────── */
     EC16 file;
@@ -455,7 +679,7 @@ SWAP_BUFFERS();
 
     gBS->FreePool(file.Message);
 
-    static const CHAR16* args[] = { L"0.2.3b", L"graphics are used", L"posk mode", NULL };
+    static const CHAR16* args[] = { L"0.3.0b", L"graphics are used", L"posk mode", NULL };
     struct Process p;
     p.Name       = L"KernelInit";
     p.ArgContext = (void*)args;
